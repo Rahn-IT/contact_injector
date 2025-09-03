@@ -12,6 +12,14 @@ eeady to be expanded or used as a crate by others.
 
 If you encounter any issues, you're welcome to open an issue on GitHub.
 
+## Supported Sources:
+
+- Carddav address books
+
+## Supported Destinations:
+
+- Starface Phone Systems (Please create a backup of your phone systems contacts before deploying)
+
 ## Installation
 
 The recommended way to install contact injector is using docker.
