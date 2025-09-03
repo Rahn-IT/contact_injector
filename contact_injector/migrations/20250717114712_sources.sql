@@ -1,0 +1,7 @@
+
+CREATE TABLE IF NOT EXISTS sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    access_data TEXT NOT NULL
+);

@@ -1,0 +1,54 @@
+{% extends 'layout.html' %} {% block title %} Sources {% endblock %} {% block
+content %}
+<div>
+    <a class="btn" href="/destinations/new/starface"
+        >New Starface Destination</a
+    >
+</div>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Name</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for destination in destinations %}
+        <tr>
+            <td>{{ destination.name }}</td>
+            <td>
+                <div class="actions">
+                    <div>
+                        <a
+                            href="/destinations/edit/{{destination.destination_type}}/{{destination.id}}"
+                            >✏️</a
+                        >
+                        <span class="tooltip">Edit</span>
+                    </div>
+                    <div>
+                        <form
+                            method="POST"
+                            action="/destinations/delete/{{destination.id}}"
+                            style="display: inline"
+                        >
+                            <button
+                                type="submit"
+                                style="
+                                    background: none;
+                                    border: none;
+                                    cursor: pointer;
+                                    font-size: inherit;
+                                "
+                                onclick="return confirm('Are you sure you want to delete the destination \'{{destination.name}}\'? This action cannot be undone.');"
+                            >
+                                🗑️
+                            </button>
+                        </form>
+                        <span class="tooltip">Delete</span>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

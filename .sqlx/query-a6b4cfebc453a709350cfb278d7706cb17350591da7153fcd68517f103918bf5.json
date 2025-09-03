@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT jobs.id, jobs.name, jobs.delay, sources.name as source, destinations.name as destination FROM jobs JOIN sources ON jobs.source = sources.id JOIN destinations ON jobs.destination = destinations.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "delay",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "source",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "destination",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a6b4cfebc453a709350cfb278d7706cb17350591da7153fcd68517f103918bf5"
+}

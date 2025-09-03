@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT name, delay, source, destination FROM jobs WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "delay",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "source",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "destination",
+        "ordinal": 3,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "161f4bd119692f5e575c1a64c07b5b08527136cc3c29e091f15a4442408bf3c1"
+}

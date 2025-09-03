@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT source, destination FROM jobs WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "source",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "destination",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "85d159b2a7e69f874a244acde569eff852676de7962db293a96c6696dc82cda6"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT delay FROM jobs WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "delay",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "abc98ff6c1fb30b861b6b2aba4430a3b0e1817a19dd87a9538ad2a7a0d77300f"
+}

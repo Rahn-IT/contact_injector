@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE destinations SET name = ?, access_data = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "69846f0689fa0f59e7ccb7714c73000a07f7781c2377badb4dff5c746e7af6e6"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT source_type, access_data FROM sources WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "source_type",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "access_data",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "97edb274a7825bc1806b9448641fd583fe6081402f1135e0b65c3fd0393eea50"
+}

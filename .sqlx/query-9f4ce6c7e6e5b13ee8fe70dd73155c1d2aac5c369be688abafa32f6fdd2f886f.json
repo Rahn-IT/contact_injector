@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM destinations WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "9f4ce6c7e6e5b13ee8fe70dd73155c1d2aac5c369be688abafa32f6fdd2f886f"
+}

@@ -1,0 +1,68 @@
+{% extends 'layout.html' %} {% block title %} Jobs {% endblock %} {% block
+content %}
+<div>
+    <a class="btn" href="/jobs/new">New Sync Job</a>
+</div>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Source</th>
+            <th>Destination</th>
+            <th>Delay in between runs</th>
+            <th>Currently Running</th>
+            <th>Last Run</th>
+            <th>Last Log</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for job in jobs %}
+        <tr>
+            <td>{{ job.name }}</td>
+            <td>{{ job.source }}</td>
+            <td>{{ job.destination }}</td>
+            <td>{{ job.delay }} minutes</td>
+            <td>
+                {% if job.info.currently_running %} ️✅ {% else %} ❌ {% endif
+                %} {{ job.info.currently_running }}
+            </td>
+            <td>{{ job.info.last_run }}</td>
+            <td>{{ job.info.last_log }}</td>
+            <td>
+                <div class="actions">
+                    <div>
+                        <a href="/jobs/run_now/{{job.id}}">▶️</a>
+                        <span class="tooltip">Run now</span>
+                    </div>
+                    <div>
+                        <a href="/jobs/edit/{{job.id}}">✏️</a>
+                        <span class="tooltip">Edit</span>
+                    </div>
+                    <div>
+                        <form
+                            method="POST"
+                            action="/jobs/delete/{{job.id}}"
+                            style="display: inline"
+                        >
+                            <button
+                                type="submit"
+                                style="
+                                    background: none;
+                                    border: none;
+                                    cursor: pointer;
+                                    font-size: inherit;
+                                "
+                                onclick="return confirm('Are you sure you want to delete the job \'{{job.name}}\'? This action cannot be undone.');"
+                            >
+                                🗑️
+                            </button>
+                        </form>
+                        <span class="tooltip">Delete</span>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

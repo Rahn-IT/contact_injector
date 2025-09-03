@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE jobs SET name = ?, delay = ?, source = ?, destination = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "34eba6a34714e0b12c5468b56837f1ee173fe159b658e12a5ac099fe544ed989"
+}

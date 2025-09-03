@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO destinations (name, destination_type, access_data) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "e2252f5586733f1d29674e625f009e23a269ef004436731a4c2b50d41fb22cf0"
+}

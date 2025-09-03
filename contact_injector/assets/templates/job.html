@@ -1,0 +1,68 @@
+{% extends 'layout.html' %} {% block title %} Sync Job {% endblock %} {% block
+content %}
+<form method="POST">
+    <table class="table">
+        <tbody>
+            <tr>
+                <td>Name</td>
+                <td>
+                    <input
+                        type="text"
+                        name="name"
+                        value="{{ form.name }}"
+                        required
+                    />
+                </td>
+            </tr>
+            <tr>
+                <td>Source</td>
+                <td>
+                    <select name="source" required>
+                        {% for id, name in sources %} {% if id == form.source %}
+                        <option value="{{ id }}" selected="selected">
+                            {{ name }}
+                        </option>
+                        {% else %}
+                        <option value="{{ id }}">{{ name }}</option>
+                        {% endif %} {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td>Destination</td>
+                <td>
+                    <select
+                        name="destination"
+                        value="{{ form.destination }}"
+                        required
+                    >
+                        {% for id, name in destinations %} {% if id ==
+                        form.destination %}
+                        <option value="{{ id }}" selected="selected">
+                            {{ name }}
+                        </option>
+                        {% else %}
+                        <option value="{{ id }}">{{ name }}</option>
+                        {% endif %} {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td>Delay between runs</td>
+                <td>
+                    <input
+                        type="number"
+                        name="delay"
+                        value="{{ form.delay }}"
+                        required
+                    />
+                    Minutes
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <div>
+        <input class="btn" type="submit" value="Save" />
+    </div>
+</form>
+{% endblock %}
