@@ -1,0 +1,11 @@
+volumes:
+  db:
+
+services:
+  contact_injector:
+    image: ghcr.io/rahn-it/contact_injector:master
+    restart: on-failure
+    ports:
+      - "4040:4040"
+    volumes:
+      - db:/app/db
