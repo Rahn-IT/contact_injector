@@ -9,6 +9,7 @@ RUN cargo build --release
 
 FROM debian:stable-slim AS runner
 RUN mkdir -p /app/db
+RUN apt-get update && apt-get upgrade -y && apt-get install -y ca-certificates && apt-get clean
 WORKDIR /app
 COPY --from=builder /app/target/release/contact_injector /app/contact_injector
 EXPOSE 4040
