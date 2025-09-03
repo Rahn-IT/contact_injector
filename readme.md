@@ -18,7 +18,8 @@ If you encounter any issues, you're welcome to open an issue on GitHub.
 
 ## Supported Destinations:
 
-- Starface Phone Systems (Please create a backup of your phone systems contacts before deploying)
+- Starface Phone Systems
+  (Please create a backup of your phone systems contacts before deploying)
 
 ## Installation
 
