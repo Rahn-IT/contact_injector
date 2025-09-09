@@ -1,5 +1,6 @@
 use crate::contact::Contact;
 
+pub mod caldav_birthdays;
 pub mod starface;
 
 pub trait ContactDestination {
