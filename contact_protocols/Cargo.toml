@@ -9,6 +9,7 @@ chrono = "0.4.41"
 http = "1.3.1"
 hyper-rustls = "0.27.7"
 hyper-util = "0.1.16"
+itertools = "0.14.0"
 libdav = "0.9.3"
 nom = "8.0.0"
 reqwest = { version = "0.12.23", features = ["json"] }
@@ -17,3 +18,4 @@ sha2 = "0.10.9"
 thiserror = "2.0.16"
 tokio = "1.47.1"
 tower-http = { version = "0.6.6", features = ["auth"] }
+uuid = { version = "1.18.1", features = ["v4"] }

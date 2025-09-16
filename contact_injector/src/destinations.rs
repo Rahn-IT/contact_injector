@@ -1,17 +1,20 @@
 use anyhow::anyhow;
 use axum::{
-    Form,
     extract::{Path, State},
     response::{Html, Redirect},
 };
 use contact_protocols::{
     ContactDestination,
+    caldav_birthdays::{CaldavAccessData, CaldavBirthdayDestination},
     contact::Contact,
     starface::{StarfaceAccessData, StarfaceDestination},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::{AppError, AppState};
+
+pub mod caldav;
+pub mod starface;
 
 #[derive(Serialize, Debug)]
 pub struct Destination {
@@ -39,88 +42,6 @@ pub async fn list(State(state): State<AppState>) -> Result<Html<String>, AppErro
     Ok(Html(rendered))
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct StarfaceDestinationForm {
-    name: String,
-    url: String,
-    username: String,
-    password: String,
-}
-
-pub async fn new_starface_get(State(state): State<AppState>) -> Result<Html<String>, AppError> {
-    starface_edit(state, None)
-}
-
-pub async fn new_starface_post(
-    State(state): State<AppState>,
-    Form(form): Form<StarfaceDestinationForm>,
-) -> Result<Redirect, AppError> {
-    let access_data = StarfaceAccessData {
-        url: form.url,
-        username: form.username,
-        password: form.password,
-    };
-
-    let access_data_json = serde_json::to_string(&access_data)?;
-
-    sqlx::query!(
-        "INSERT INTO destinations (name, destination_type, access_data) VALUES (?, ?, ?)",
-        form.name,
-        "starface",
-        access_data_json
-    )
-    .execute(&state.db)
-    .await
-    .unwrap();
-
-    Ok(Redirect::to("/destinations"))
-}
-
-pub async fn edit_starface_get(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> Result<Html<String>, AppError> {
-    let destination = sqlx::query_as!(Destination, "SELECT * FROM destinations WHERE id = ?", id)
-        .fetch_one(&state.db)
-        .await?;
-
-    let access_data: StarfaceAccessData = serde_json::from_str(&destination.access_data)?;
-
-    let form_data = StarfaceDestinationForm {
-        name: destination.name,
-        url: access_data.url,
-        username: access_data.username,
-        password: access_data.password,
-    };
-
-    starface_edit(state, Some(form_data))
-}
-
-pub async fn edit_starface_post(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-    Form(form): Form<StarfaceDestinationForm>,
-) -> Result<Redirect, AppError> {
-    let access_data = StarfaceAccessData {
-        url: form.url,
-        username: form.username,
-        password: form.password,
-    };
-
-    let access_data_json = serde_json::to_string(&access_data)?;
-
-    sqlx::query!(
-        "UPDATE destinations SET name = ?, access_data = ? WHERE id = ?",
-        form.name,
-        access_data_json,
-        id
-    )
-    .execute(&state.db)
-    .await?;
-
-    Ok(Redirect::to("/destinations"))
-}
-
 pub async fn delete_destination(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -130,18 +51,6 @@ pub async fn delete_destination(
         .await?;
 
     Ok(Redirect::to("/destinations"))
-}
-
-fn starface_edit(
-    state: AppState,
-    data: Option<StarfaceDestinationForm>,
-) -> Result<Html<String>, AppError> {
-    let template = state
-        .jinja
-        .get_template("starface_destination.html")
-        .expect("template is loaded");
-    let rendered = template.render(data).unwrap();
-    Ok(Html(rendered))
 }
 
 pub async fn export_to_destination(
@@ -157,6 +66,15 @@ pub async fn export_to_destination(
         "starface" => {
             let access_data: StarfaceAccessData = serde_json::from_str(&destination.access_data)?;
             let destination = StarfaceDestination::new(access_data).await?;
+
+            destination
+                .export_contacts(contacts.iter())
+                .await
+                .map_err(|err| anyhow!(err).into())
+        }
+        "caldav" => {
+            let access_data: CaldavAccessData = serde_json::from_str(&destination.access_data)?;
+            let destination = CaldavBirthdayDestination::new(access_data).await?;
 
             destination
                 .export_contacts(contacts.iter())

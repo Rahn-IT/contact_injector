@@ -1,0 +1,51 @@
+{% extends 'layout.html' %} {% block title %} CalDAV Birthday Destination {%
+endblock %} {% block content %}
+<form method="POST">
+    <table class="table">
+        <tbody>
+            <tr>
+                <td>Name</td>
+                <td>
+                    <input
+                        type="text"
+                        name="name"
+                        value="{{ name }}"
+                        required
+                    />
+                </td>
+            </tr>
+            <tr>
+                <td>Carddav URL</td>
+                <td>
+                    <input type="url" name="url" value="{{ url }}" required />
+                </td>
+            </tr>
+            <tr>
+                <td>Username</td>
+                <td>
+                    <input
+                        type="text"
+                        name="username"
+                        value="{{ username }}"
+                        required
+                    />
+                </td>
+            </tr>
+            <tr>
+                <td>Password</td>
+                <td>
+                    <input
+                        type="password"
+                        name="password"
+                        value="{{ password }}"
+                        required
+                    />
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <div>
+        <input class="btn" type="submit" value="Save" />
+    </div>
+</form>
+{% endblock %}

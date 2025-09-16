@@ -43,19 +43,35 @@ fn router() -> Router<AppState> {
         .route("/destinations", get(destinations::list))
         .route(
             "/destinations/new/starface",
-            get(destinations::new_starface_get),
+            get(destinations::starface::new_get),
         )
         .route(
             "/destinations/new/starface",
-            post(destinations::new_starface_post),
+            post(destinations::starface::new_post),
         )
         .route(
             "/destinations/edit/starface/{id}",
-            get(destinations::edit_starface_get),
+            get(destinations::starface::edit_get),
         )
         .route(
             "/destinations/edit/starface/{id}",
-            post(destinations::edit_starface_post),
+            post(destinations::starface::edit_post),
+        )
+        .route(
+            "/destinations/new/caldav",
+            get(destinations::caldav::new_get),
+        )
+        .route(
+            "/destinations/new/caldav",
+            post(destinations::caldav::new_post),
+        )
+        .route(
+            "/destinations/edit/caldav/{id}",
+            get(destinations::caldav::edit_get),
+        )
+        .route(
+            "/destinations/edit/caldav/{id}",
+            post(destinations::caldav::edit_post),
         )
         .route(
             "/destinations/delete/{id}",
@@ -167,7 +183,7 @@ async fn main() {
     // run our app with hyper, listening globally on port 3000
     let addr = "0.0.0.0:4040";
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    println!("Starting contact injector on: {}", addr);
+    println!("Starting contact injector on: http://{}", addr);
     axum::serve(listener, app).await.unwrap();
 }
 

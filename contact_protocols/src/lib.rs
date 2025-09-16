@@ -2,6 +2,7 @@ pub mod contact;
 mod destination;
 mod source;
 mod vcard;
+mod vobject;
 
 pub use destination::ContactDestination;
 pub use destination::{caldav_birthdays, starface};
