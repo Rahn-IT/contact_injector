@@ -70,6 +70,16 @@ impl VObject {
             }
         }
     }
+
+    pub fn get_property(&self, key: &str) -> Option<&VProperty> {
+        self.properties.iter().find(|p| p.class == key)
+    }
+
+    pub fn get_property_value(&self, key: &str) -> Option<&str> {
+        let value = self.get_property(key)?.values.first()?.as_str();
+
+        Some(value)
+    }
 }
 
 impl VProperty {
