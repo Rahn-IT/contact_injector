@@ -1,3 +1,4 @@
+mod carddav_client;
 pub mod contact;
 mod destination;
 mod source;

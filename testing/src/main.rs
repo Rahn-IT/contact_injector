@@ -1,0 +1,18 @@
+use crate::carddav_client::CardDavClient;
+
+mod carddav_client;
+
+#[tokio::main]
+async fn main() {
+    let url = "https://muh.it-rahn.de/SOGo/dav/luca@it-rahn.de/Contacts/personal/"
+        .parse()
+        .unwrap();
+    let client = CardDavClient::new(
+        url,
+        "luca@it-rahn.de",
+        "{,91,nsUipwaIsTEpROTTEpoTLEneRpSTyInE",
+    )
+    .unwrap();
+    let contacts = client.list_contacts().await.unwrap();
+    println!("{:#?}", contacts);
+}

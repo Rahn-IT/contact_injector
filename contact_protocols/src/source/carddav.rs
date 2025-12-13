@@ -4,7 +4,11 @@ use hyper_util::{
     client::legacy::{Client, connect::HttpConnector},
     rt::TokioExecutor,
 };
-use libdav::{CardDavClient, dav::WebDavClient};
+use libdav::{
+    CardDavClient,
+    carddav::{GetAddressBookResources, get_addressbook_resources},
+    dav::{WebDavClient, WebDavError},
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tower_http::auth::AddAuthorization;
@@ -25,11 +29,11 @@ pub struct CarddavSource {
 }
 
 #[derive(Debug, Error)]
-pub enum CarddavError {
+pub enum CarddavError<C> {
     #[error("error while loading root certs: {0}")]
     LoadRootError(std::io::Error),
     #[error("inner error: {0}")]
-    Inner(#[from] libdav::dav::WebDavError),
+    Inner(#[from] WebDavError<C>),
     #[error("fetch error: {0}")]
     FetchError(StatusCode),
     #[error("parse error: {0}")]
@@ -39,7 +43,7 @@ pub enum CarddavError {
 }
 
 impl CarddavSource {
-    pub async fn new(access_data: CarddavAccessData) -> Result<Self, CarddavError> {
+    pub async fn new(access_data: CarddavAccessData) -> Result<Self, CarddavError<_>> {
         let addressbook_uri: Uri = access_data.url.parse()?;
         let username = access_data.username;
         let password = access_data.password;
@@ -55,7 +59,12 @@ impl CarddavSource {
         let webdav = WebDavClient::new(addressbook_uri.clone(), auth_client);
 
         let client = libdav::CardDavClient::new(webdav);
-        client.list_resources(addressbook_uri.path()).await?;
+        match client
+            .request(GetAddressBookResources::new(addressbook_uri.path()))
+            .await {
+                Ok(items) => (),
+                Err(err)
+            }
 
         Ok(Self {
             client,
@@ -70,18 +79,11 @@ impl ContactSource for CarddavSource {
     async fn fetch_contacts(&self) -> Result<Vec<crate::contact::Contact>, Self::Error> {
         let resource_list = self
             .client
-            .list_resources(self.addressbook_uri.path())
+            .request(GetAddressBookResources::new(self.addressbook_uri.path()))
             .await?;
 
-        let vcards = self
-            .client
-            .get_address_book_resources(
-                self.addressbook_uri.path(),
-                resource_list.into_iter().map(|resource| resource.href),
-            )
-            .await?;
-
-        let contacts = vcards
+        let contacts = resource_list
+            .resources
             .iter()
             .map(|card| {
                 // Todo: detect unfinished parsing and return error

@@ -58,6 +58,7 @@ impl CaldavBirthdayDestination {
         let webdav = WebDavClient::new(calendar_uri.clone(), auth_client);
 
         let client = libdav::CalDavClient::new(webdav);
+
         client.list_resources(calendar_uri.path()).await?;
 
         Ok(Self {
