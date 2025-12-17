@@ -14,5 +14,8 @@ async fn main() {
     )
     .unwrap();
     let contacts = client.list_contacts().await.unwrap();
+
+    let contacts = client.fetch_contacts(&contacts).await.unwrap();
+
     println!("{:#?}", contacts);
 }

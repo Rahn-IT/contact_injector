@@ -369,6 +369,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dav-client"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "quick-xml",
+ "reqwest",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2273,17 +2284,6 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "testing"
-version = "0.1.0"
-dependencies = [
- "base64",
- "quick-xml",
- "reqwest",
- "thiserror",
- "tokio",
 ]
 
 [[package]]
