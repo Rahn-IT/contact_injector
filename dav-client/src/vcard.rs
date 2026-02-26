@@ -1,5 +1,12 @@
 use std::{borrow::Cow, char};
 
+use crate::{
+    contact::{
+        Address, AddressType, Attachment, Contact, ContactPhoto, Email, EmailType, Name, Phone,
+        PhoneType, Url, UrlType,
+    },
+    vcard::util::{parse_date, parse_datetime, parse_string},
+};
 use base64::Engine;
 use chrono::{NaiveDate, NaiveDateTime};
 use nom::{
@@ -10,14 +17,6 @@ use nom::{
     combinator::{map_res, opt},
     multi::{count, fold_many1, separated_list0, separated_list1},
     sequence::{delimited, preceded, terminated},
-};
-
-use crate::{
-    contact::{
-        Address, AddressType, Attachment, Contact, ContactPhoto, Email, EmailType, Name, Phone,
-        PhoneType, Url, UrlType,
-    },
-    vcard::util::{parse_date, parse_datetime, parse_string},
 };
 mod util;
 

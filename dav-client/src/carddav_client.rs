@@ -7,6 +7,12 @@ use reqwest::{
     header::{AUTHORIZATION, HeaderMap, HeaderValue, IF_MATCH},
 };
 
+use crate::{
+    contact::Contact,
+    vcard::parse_vcard,
+    vobject::vcard::{VCard, VCardError},
+};
+
 /// ---------- Error handling ----------
 
 #[derive(Debug, thiserror::Error)]
@@ -66,14 +72,27 @@ impl CardDavClient {
 
     /// ---------- List contacts ----------
     pub async fn list_contacts(&self) -> Result<Vec<ContactRef>, CardDavError> {
-        let body = r#"
-<?xml version="1.0" encoding="utf-8"?>
-<c:addressbook-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:carddav">
-  <d:prop>
-    <d:getetag />
-  </d:prop>
-</c:addressbook-query>
-"#;
+        let mut writer = quick_xml::Writer::new(Cursor::new(Vec::<u8>::new()));
+
+        writer
+            .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))
+            .unwrap();
+
+        writer
+            .create_element("c:addressbook-query")
+            .with_attribute(("xmlns:d", "DAV:"))
+            .with_attribute(("xmlns:c", "urn:ietf:params:xml:ns:carddav"))
+            .write_inner_content(|writer| {
+                writer
+                    .create_element("d:prop")
+                    .write_inner_content(|writer| {
+                        writer.create_element("d:getetag").write_empty()?;
+                        Ok(())
+                    })?;
+                Ok(())
+            })
+            .expect("Writing to a Vec is unlikely to fail");
+        let xml = writer.into_inner().into_inner();
 
         let resp = self
             .client
@@ -83,7 +102,7 @@ impl CardDavClient {
             )
             .header("Depth", "1")
             .header("Content-Type", "application/xml")
-            .body(body)
+            .body(xml)
             .send()
             .await?
             .error_for_status()?;
@@ -95,7 +114,7 @@ impl CardDavClient {
     pub async fn fetch_contacts(
         &self,
         contacts: &[ContactRef],
-    ) -> Result<Vec<String>, CardDavError> {
+    ) -> Result<Vec<VCard>, CardDavError> {
         let mut writer = quick_xml::Writer::new(Cursor::new(Vec::<u8>::new()));
 
         writer
@@ -160,9 +179,11 @@ pub enum ParseMultigetError {
     EncodingError(#[from] quick_xml::encoding::EncodingError),
     #[error("missing content")]
     MissingContent,
+    #[error("parse vcard error: {0}")]
+    ParseVCard(#[from] VCardError),
 }
 
-fn parse_multiget(xml: &[u8]) -> Result<Vec<String>, ParseMultigetError> {
+fn parse_multiget(xml: &[u8]) -> Result<Vec<VCard>, ParseMultigetError> {
     let mut reader = quick_xml::Reader::from_reader(xml);
 
     match reader.read_event()? {
@@ -207,7 +228,7 @@ fn parse_multiget(xml: &[u8]) -> Result<Vec<String>, ParseMultigetError> {
 
 fn parse_multiget_response(
     reader: &mut quick_xml::Reader<&[u8]>,
-) -> Result<String, ParseMultigetError> {
+) -> Result<VCard, ParseMultigetError> {
     let mut content = None;
     loop {
         match reader.read_event()? {
@@ -232,7 +253,8 @@ fn parse_multiget_response(
     }
 
     if let Some(content) = content {
-        Ok(content)
+        let contact = VCard::parse(&content)?;
+        Ok(contact)
     } else {
         Err(ParseMultigetError::MissingContent)
     }

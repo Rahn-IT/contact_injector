@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 pub mod icalendar;
+pub mod vcard;
 
 struct VObject {
     class: String,
@@ -46,9 +47,9 @@ impl VObject {
         let mut properties = Vec::new();
 
         loop {
-            let line = lines.peek().ok_or(VParseError::UnexpectedEnd)?;
-            if line.starts_with("BEGIN:") {
-                let sub_object = VObject::parse(line)?;
+            let next_line = lines.peek().ok_or(VParseError::UnexpectedEnd)?;
+            if next_line.starts_with("BEGIN:") {
+                let sub_object = VObject::parse(next_line)?;
                 sub_objects.push(sub_object);
             }
 
@@ -69,6 +70,10 @@ impl VObject {
                 properties.push(property);
             }
         }
+    }
+
+    pub fn get_multi_property(&self, key: &str) -> Vec<&VProperty> {
+        self.properties.iter().filter(|p| p.class == key).collect()
     }
 
     pub fn get_property(&self, key: &str) -> Option<&VProperty> {

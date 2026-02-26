@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 base64 = "0.22.1"
+chrono = "0.4.42"
+nom = "8.0.0"
 quick-xml = "0.38.4"
 reqwest = "0.12.25"
 thiserror = "2.0.17"

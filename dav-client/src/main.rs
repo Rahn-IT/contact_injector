@@ -1,6 +1,9 @@
 use crate::carddav_client::CardDavClient;
 
 mod carddav_client;
+mod contact;
+pub mod vcard;
+mod vobject;
 
 #[tokio::main]
 async fn main() {
@@ -17,5 +20,5 @@ async fn main() {
 
     let contacts = client.fetch_contacts(&contacts).await.unwrap();
 
-    println!("{:#?}", contacts);
+    println!("{:#?}", contacts.first());
 }

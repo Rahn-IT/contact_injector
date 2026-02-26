@@ -373,6 +373,8 @@ name = "dav-client"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "chrono",
+ "nom",
  "quick-xml",
  "reqwest",
  "thiserror",
