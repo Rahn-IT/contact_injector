@@ -1,20 +1,10 @@
-use http::{StatusCode, Uri, uri::InvalidUri};
-use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-use hyper_util::{
-    client::legacy::{Client, connect::HttpConnector},
-    rt::TokioExecutor,
-};
-use libdav::{
-    CardDavClient,
-    carddav::{GetAddressBookResources, get_addressbook_resources},
-    dav::{WebDavClient, WebDavError},
-};
+use dav_client::{carddav_client::CardDavClient, contact::Contact, vcard::parse_vcard};
+use http::StatusCode;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tower_http::auth::AddAuthorization;
 
 use super::ContactSource;
-use crate::vcard::parse_vcard;
 
 #[derive(Serialize, Deserialize)]
 pub struct CarddavAccessData {
@@ -24,51 +14,34 @@ pub struct CarddavAccessData {
 }
 
 pub struct CarddavSource {
-    client: CardDavClient<AddAuthorization<Client<HttpsConnector<HttpConnector>, String>>>,
-    addressbook_uri: Uri,
+    client: CardDavClient,
+    addressbook_url: Url,
 }
 
 #[derive(Debug, Error)]
-pub enum CarddavError<C> {
-    #[error("error while loading root certs: {0}")]
-    LoadRootError(std::io::Error),
+pub enum CarddavError {
     #[error("inner error: {0}")]
-    Inner(#[from] WebDavError<C>),
+    Inner(#[from] dav_client::carddav_client::CardDavError),
     #[error("fetch error: {0}")]
     FetchError(StatusCode),
     #[error("parse error: {0}")]
     ParseError(String),
     #[error("invalid addressbook URI: {0:?}")]
-    InvalidAddressbookUri(#[from] InvalidUri),
+    InvalidAddressbookUri(#[from] url::ParseError),
 }
 
 impl CarddavSource {
-    pub async fn new(access_data: CarddavAccessData) -> Result<Self, CarddavError<_>> {
-        let addressbook_uri: Uri = access_data.url.parse()?;
+    pub async fn new(access_data: CarddavAccessData) -> Result<Self, CarddavError> {
+        let addressbook_uri: Url = access_data.url.parse()?;
         let username = access_data.username;
         let password = access_data.password;
 
-        let https_connector = HttpsConnectorBuilder::new()
-            .with_native_roots()
-            .map_err(CarddavError::LoadRootError)?
-            .https_or_http()
-            .enable_http1()
-            .build();
-        let http_client = Client::builder(TokioExecutor::new()).build(https_connector);
-        let auth_client = AddAuthorization::basic(http_client, &username, &password);
-        let webdav = WebDavClient::new(addressbook_uri.clone(), auth_client);
-
-        let client = libdav::CardDavClient::new(webdav);
-        match client
-            .request(GetAddressBookResources::new(addressbook_uri.path()))
-            .await {
-                Ok(items) => (),
-                Err(err)
-            }
+        let client = CardDavClient::new(addressbook_uri.clone(), &username, &password)?;
+        client.list_contacts().await?;
 
         Ok(Self {
             client,
-            addressbook_uri,
+            addressbook_url: addressbook_uri,
         })
     }
 }
@@ -77,27 +50,30 @@ impl ContactSource for CarddavSource {
     type Error = CarddavError;
 
     async fn fetch_contacts(&self) -> Result<Vec<crate::contact::Contact>, Self::Error> {
-        let resource_list = self
-            .client
-            .request(GetAddressBookResources::new(self.addressbook_uri.path()))
-            .await?;
+        let resource_list = self.client.list_contacts().await?;
 
-        let contacts = resource_list
-            .resources
-            .iter()
-            .map(|card| {
-                // Todo: detect unfinished parsing and return error
-                Ok(parse_vcard(
-                    &card
-                        .content
-                        .as_ref()
-                        .map_err(|err| CarddavError::FetchError(err.clone()))?
-                        .data,
-                )
-                .map_err(|e| CarddavError::ParseError(e.to_string()))?
-                .1)
-            })
-            .collect::<Result<Vec<_>, CarddavError>>()?;
+        let contacts = self
+            .client
+            .fetch_contacts(&resource_list)
+            .await
+            .map(|vcard| parse_vcard(input))?;
+
+        // let contacts = resource_list
+        //     .resources
+        //     .iter()
+        //     .map(|card| {
+        //         // Todo: detect unfinished parsing and return error
+        //         Ok(parse_vcard(
+        //             &card
+        //                 .content
+        //                 .as_ref()
+        //                 .map_err(|err| CarddavError::FetchError(err.clone()))?
+        //                 .data,
+        //         )
+        //         .map_err(|e| CarddavError::ParseError(e.to_string()))?
+        //         .1)
+        //     })
+        //     .collect::<Result<Vec<_>, CarddavError>>()?;
 
         Ok(contacts)
     }

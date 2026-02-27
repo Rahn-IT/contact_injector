@@ -16,7 +16,7 @@ struct VProperty {
 }
 
 #[derive(Debug, thiserror::Error)]
-enum VParseError {
+pub enum VParseError {
     #[error("missing begin")]
     MissingBegin,
     #[error("unexpected end")]

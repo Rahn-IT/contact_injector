@@ -1,17 +1,13 @@
-use std::{hash::Hash, io::Cursor};
+use std::io::Cursor;
 
 use base64::{Engine as _, engine::general_purpose};
-use quick_xml::events::{BytesDecl, BytesStart, BytesText, Event};
+use quick_xml::events::{BytesDecl, BytesText, Event};
 use reqwest::{
     Url,
-    header::{AUTHORIZATION, HeaderMap, HeaderValue, IF_MATCH},
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
 };
 
-use crate::{
-    contact::Contact,
-    vcard::parse_vcard,
-    vobject::vcard::{VCard, VCardError},
-};
+use crate::vobject::vcard::{VCard, VCardError};
 
 /// ---------- Error handling ----------
 

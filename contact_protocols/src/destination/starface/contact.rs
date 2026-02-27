@@ -1,13 +1,11 @@
 use std::{fmt::Debug, hash::Hash};
 
+use crate::contact::{Contact, PhoneType};
 use nom::Input;
 
-use crate::{
-    contact::{Contact, PhoneType},
-    destination::starface::{
-        Attribute, Block, PhoneSchema, PhoneSchemaType, RawStarfaceContact, SummarySchema,
-        SummarySchemaType, Tag, UploadContact,
-    },
+use crate::destination::starface::{
+    Attribute, Block, PhoneSchema, PhoneSchemaType, RawStarfaceContact, SummarySchema,
+    SummarySchemaType, Tag, UploadContact,
 };
 
 #[derive(Default, Eq)]

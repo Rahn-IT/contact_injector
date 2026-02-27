@@ -1,5 +1,4 @@
 use base64::{Engine as _, engine::general_purpose};
-use quick_xml::Reader;
 use quick_xml::events::Event;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, IF_MATCH};
 use serde::Deserialize;

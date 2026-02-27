@@ -1,19 +1,15 @@
 use std::{collections::HashMap, fmt::Display, hash::Hash};
 
+use crate::contact::Contact;
 use chrono::{Days, Utc};
 use http::{Uri, uri::InvalidUri};
-use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-use hyper_util::{
-    client::legacy::{Client, connect::HttpConnector},
-    rt::TokioExecutor,
-};
+use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use itertools::Itertools;
-use libdav::{CalDavClient, dav::WebDavClient};
 use serde::{Deserialize, Serialize};
 use tower_http::auth::AddAuthorization;
 use uuid::Uuid;
 
-use crate::{ContactDestination, carddav::CarddavError, contact::Contact};
+use crate::ContactDestination;
 
 #[derive(Serialize, Deserialize)]
 pub struct CaldavAccessData {
@@ -23,7 +19,7 @@ pub struct CaldavAccessData {
 }
 
 pub struct CaldavBirthdayDestination {
-    client: CalDavClient<AddAuthorization<Client<HttpsConnector<HttpConnector>, String>>>,
+    client: (),
     calendar_uri: Uri,
 }
 

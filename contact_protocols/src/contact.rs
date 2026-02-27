@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+pub mod vcard;
+
 #[derive(Debug, Default)]
 pub struct Contact {
     pub display_name: String,

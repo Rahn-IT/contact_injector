@@ -1,9 +1,4 @@
-use crate::carddav_client::CardDavClient;
-
-mod carddav_client;
-mod contact;
-pub mod vcard;
-mod vobject;
+use dav_client::carddav_client::CardDavClient;
 
 #[tokio::main]
 async fn main() {
