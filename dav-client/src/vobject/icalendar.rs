@@ -1,4 +1,5 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use uuid::Uuid;
 
 use crate::vobject::{VObject, VParseError, VProperty};
 
@@ -66,7 +67,18 @@ pub enum ICalError {
 }
 
 impl ICalendar {
-    fn parse(input: &str) -> Result<Self, ICalError> {
+    pub fn new() -> Self {
+        Self {
+            prodid: "-//rust-sav-client".to_string(),
+            events: Vec::new(),
+        }
+    }
+
+    pub fn add_event(&mut self, event: VEvent) {
+        self.events.push(event);
+    }
+
+    pub fn parse(input: &str) -> Result<Self, ICalError> {
         let vobject = VObject::parse(input)?;
         let prodid = vobject
             .get_property_value("PRODID")
@@ -94,6 +106,26 @@ impl ICalendar {
 }
 
 impl VEvent {
+    pub fn new(summary: String, start: impl Into<DateOrTime>, end: impl Into<DateOrTime>) -> Self {
+        Self {
+            uid: Uuid::new_v4().to_string(),
+            summary,
+            description: None,
+            location: None,
+            start: start.into(),
+            end: end.into(),
+            repeat: None,
+            created: Utc::now(),
+            stamp: Utc::now(),
+            modified: Utc::now(),
+            alarms: Vec::new(),
+        }
+    }
+
+    pub fn add_alarm(&mut self, alarm: VAlarm) {
+        self.alarms.push(alarm);
+    }
+
     fn from_vobject(vobject: VObject) -> Result<Self, ICalError> {
         let uid = vobject
             .get_property_value("UID")
@@ -179,6 +211,19 @@ impl VEvent {
 }
 
 impl VAlarm {
+    pub fn new(summary: String, action: Action) -> Self {
+        Self {
+            summary,
+            description: None,
+            action,
+        }
+    }
+
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = Some(description);
+        self
+    }
+
     fn from_vobject(vobject: VObject) -> Result<Self, ICalError> {
         let summary = vobject
             .get_property_value("SUMMARY")
@@ -213,6 +258,18 @@ pub enum Action {
 pub enum DateOrTime {
     Date(NaiveDate),
     DateTime(NaiveDateTime),
+}
+
+impl From<NaiveDate> for DateOrTime {
+    fn from(date: NaiveDate) -> Self {
+        DateOrTime::Date(date)
+    }
+}
+
+impl From<NaiveDateTime> for DateOrTime {
+    fn from(datetime: NaiveDateTime) -> Self {
+        DateOrTime::DateTime(datetime)
+    }
 }
 
 impl DateOrTime {

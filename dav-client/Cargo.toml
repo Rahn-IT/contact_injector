@@ -12,3 +12,4 @@ quick-xml = "0.38.4"
 reqwest = "0.12.25"
 thiserror = "2.0.17"
 tokio = { version = "1.48.0", features = ["full"] }
+uuid = { version = "1.21.0", features = ["v4"] }

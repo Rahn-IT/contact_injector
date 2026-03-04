@@ -1,377 +1,81 @@
-use std::io::Cursor;
+use reqwest::Url;
 
-use base64::{Engine as _, engine::general_purpose};
-use quick_xml::events::{BytesDecl, BytesText, Event};
-use reqwest::{
-    Url,
-    header::{AUTHORIZATION, HeaderMap, HeaderValue},
+use crate::{
+    dav_client::{DavClient, DavError, ResourceRef},
+    vobject::vcard::{VCard, VCardError},
 };
-
-use crate::vobject::vcard::{VCard, VCardError};
 
 /// ---------- Error handling ----------
 
 #[derive(Debug, thiserror::Error)]
 pub enum CardDavError {
-    #[error("http error: {0}")]
-    Http(#[from] reqwest::Error),
-
-    #[error("utf8 error: {0}")]
-    Utf8(#[from] std::string::FromUtf8Error),
-
-    #[error("unexpected response: {0}")]
-    UnexpectedResponse(String),
-
-    #[error("error parsing contact refs: {0}")]
-    ParseContactRef(#[from] ParseContactRefError),
-
-    #[error("error parsing multiget response: {0}")]
-    ParseMultiget(#[from] ParseMultigetError),
+    #[error("dav error: {0}")]
+    DavError(#[from] DavError),
+    #[error("error parsing vcard: {0}")]
+    ParseError(#[from] VCardError),
 }
 
 /// ---------- Data types ----------
 
 #[derive(Debug, Clone)]
-pub struct ContactRef {
-    pub href: String,
-    pub etag: Option<String>,
-}
+pub struct ContactRef(ResourceRef);
 
 #[derive(Clone)]
 pub struct CardDavClient {
-    client: reqwest::Client,
-    addressbook_url: Url,
+    client: DavClient,
 }
+
+const ADDRESSBOOK_QUERY: &str = "c:addressbook-query";
+const ADDRESSBOOK_MULTIGET: &str = "c:addressbook-multiget";
+const CARDDAV_NAMESPACE: &str = "urn:ietf:params:xml:ns:carddav";
+const CARDDAV_DATA_NAMESPACE: &str = "c:address-data";
 
 /// ---------- Client ----------
 
 impl CardDavClient {
     pub fn new(addressbook_url: Url, username: &str, password: &str) -> Result<Self, CardDavError> {
-        let mut headers = HeaderMap::new();
-
-        let auth = format!("{}:{}", username, password);
-        let encoded = general_purpose::STANDARD.encode(auth.as_bytes());
-        let value = HeaderValue::from_str(&format!("Basic {}", encoded))
-            .map_err(|_| CardDavError::UnexpectedResponse("invalid auth header".into()))?;
-
-        headers.insert(AUTHORIZATION, value);
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()?;
-
         Ok(Self {
-            client,
-            addressbook_url: addressbook_url.into(),
+            client: DavClient::new(addressbook_url, username, password)?,
         })
     }
 
     /// ---------- List contacts ----------
     pub async fn list_contacts(&self) -> Result<Vec<ContactRef>, CardDavError> {
-        let mut writer = quick_xml::Writer::new(Cursor::new(Vec::<u8>::new()));
-
-        writer
-            .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))
-            .unwrap();
-
-        writer
-            .create_element("c:addressbook-query")
-            .with_attribute(("xmlns:d", "DAV:"))
-            .with_attribute(("xmlns:c", "urn:ietf:params:xml:ns:carddav"))
-            .write_inner_content(|writer| {
-                writer
-                    .create_element("d:prop")
-                    .write_inner_content(|writer| {
-                        writer.create_element("d:getetag").write_empty()?;
-                        Ok(())
-                    })?;
-                Ok(())
-            })
-            .expect("Writing to a Vec is unlikely to fail");
-        let xml = writer.into_inner().into_inner();
-
-        let resp = self
+        let refs = self
             .client
-            .request(
-                reqwest::Method::from_bytes(b"REPORT").unwrap(),
-                self.addressbook_url.clone(),
-            )
-            .header("Depth", "1")
-            .header("Content-Type", "application/xml")
-            .body(xml)
-            .send()
+            .list_resources(ADDRESSBOOK_QUERY, CARDDAV_NAMESPACE)
             .await?
-            .error_for_status()?;
+            .into_iter()
+            .map(ContactRef)
+            .collect();
 
-        let bytes = resp.bytes().await?;
-        Ok(parse_contact_refs(&bytes)?)
+        Ok(refs)
     }
 
     pub async fn fetch_contacts(
         &self,
         contacts: &[ContactRef],
     ) -> Result<Vec<VCard>, CardDavError> {
-        let mut writer = quick_xml::Writer::new(Cursor::new(Vec::<u8>::new()));
+        let refs = contacts
+            .iter()
+            .map(|contact| contact.0.clone())
+            .collect::<Vec<_>>();
 
-        writer
-            .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))
-            .unwrap();
-
-        writer
-            .create_element("c:addressbook-multiget")
-            .with_attribute(("xmlns:d", "DAV:"))
-            .with_attribute(("xmlns:c", "urn:ietf:params:xml:ns:carddav"))
-            .write_inner_content(|writer| {
-                writer
-                    .create_element("d:prop")
-                    .write_inner_content(|writer| {
-                        writer.create_element("d:getetag").write_empty()?;
-                        writer.create_element("c:address-data").write_empty()?;
-                        Ok(())
-                    })?;
-                for contact in contacts {
-                    writer
-                        .create_element("d:href")
-                        .write_text_content(BytesText::new(&contact.href))?;
-                }
-                Ok(())
-            })
-            .unwrap();
-
-        let xml = writer.into_inner().into_inner();
-
-        let resp = self
+        let resources = self
             .client
-            .request(
-                reqwest::Method::from_bytes(b"REPORT").unwrap(),
-                self.addressbook_url.clone(),
+            .multiget(
+                &refs,
+                ADDRESSBOOK_MULTIGET,
+                CARDDAV_NAMESPACE,
+                CARDDAV_DATA_NAMESPACE,
             )
-            .header("Depth", "1")
-            .header("Content-Type", "application/xml")
-            .body(xml)
-            .send()
-            .await?
-            .error_for_status()?;
+            .await?;
 
-        let bytes = resp.bytes().await?;
-
-        let contacts = parse_multiget(&bytes)?;
+        let contacts = resources
+            .iter()
+            .map(|resource| VCard::parse(resource))
+            .collect::<Result<_, VCardError>>()?;
 
         Ok(contacts)
-    }
-}
-
-// ---------- Helpers ----------
-
-#[derive(Debug, thiserror::Error)]
-pub enum ParseMultigetError {
-    #[error("xml error: {0}")]
-    Xml(#[from] quick_xml::Error),
-    #[error("missing declaration")]
-    MissingDecl,
-    #[error("unexpected end of file")]
-    UnexpectedEof,
-    #[error("encoding error")]
-    EncodingError(#[from] quick_xml::encoding::EncodingError),
-    #[error("missing content")]
-    MissingContent,
-    #[error("parse vcard error: {0}")]
-    ParseVCard(#[from] VCardError),
-}
-
-fn parse_multiget(xml: &[u8]) -> Result<Vec<VCard>, ParseMultigetError> {
-    let mut reader = quick_xml::Reader::from_reader(xml);
-
-    match reader.read_event()? {
-        Event::Decl(_) => {}
-        _ => return Err(ParseMultigetError::MissingDecl),
-    }
-
-    // Find start of multistatus
-    loop {
-        match reader.read_event()? {
-            Event::Start(start) => {
-                if start.name().as_ref() == b"D:multistatus" {
-                    break;
-                }
-            }
-            Event::Eof => return Ok(vec![]),
-            _ => {}
-        }
-    }
-
-    let mut results = Vec::new();
-
-    loop {
-        match reader.read_event()? {
-            Event::Start(start) => {
-                if start.name().as_ref() == b"D:response" {
-                    results.push(parse_multiget_response(&mut reader)?);
-                }
-            }
-            Event::End(end) => {
-                if end.name().as_ref() == b"D:multistatus" {
-                    break;
-                }
-            }
-            Event::Eof => return Err(ParseMultigetError::UnexpectedEof),
-            _ => {}
-        }
-    }
-
-    Ok(results)
-}
-
-fn parse_multiget_response(
-    reader: &mut quick_xml::Reader<&[u8]>,
-) -> Result<VCard, ParseMultigetError> {
-    let mut content = None;
-    loop {
-        match reader.read_event()? {
-            Event::Start(start) => match start.name().as_ref() {
-                b"C:address-data" => {
-                    if let Event::Text(t) = reader.read_event()? {
-                        content = Some(t.decode()?.to_string());
-                    }
-                }
-                _ => {}
-            },
-            Event::End(end) => {
-                if end.name().as_ref() == b"D:response" {
-                    break;
-                }
-            }
-            Event::Eof => {
-                return Err(ParseMultigetError::UnexpectedEof);
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(content) = content {
-        let contact = VCard::parse(&content)?;
-        Ok(contact)
-    } else {
-        Err(ParseMultigetError::MissingContent)
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ParseContactRefError {
-    #[error("xml error: {0}")]
-    Xml(#[from] quick_xml::Error),
-    #[error("missing declaration")]
-    MissingDecl,
-    #[error("unexpected end of file")]
-    UnexpectedEof,
-    #[error("unexpected event")]
-    UnexpectedEvent,
-    #[error("missing href")]
-    MissingHref,
-    #[error("encoding error")]
-    EncodingError(#[from] quick_xml::encoding::EncodingError),
-}
-
-fn parse_contact_refs(xml: &[u8]) -> Result<Vec<ContactRef>, ParseContactRefError> {
-    let mut reader = quick_xml::Reader::from_reader(xml);
-
-    match reader.read_event()? {
-        Event::Decl(_) => {}
-        _ => return Err(ParseContactRefError::MissingDecl),
-    }
-
-    // Find start of multistatus
-    loop {
-        match reader.read_event()? {
-            Event::Start(start) => {
-                if start.name().as_ref() == b"D:multistatus" {
-                    break;
-                }
-            }
-            Event::Eof => return Ok(vec![]),
-            _ => {}
-        }
-    }
-
-    let mut results = Vec::new();
-
-    loop {
-        match reader.read_event()? {
-            Event::Start(start) => {
-                if start.name().as_ref() == b"D:response" {
-                    results.push(parse_single_ref(&mut reader)?);
-                }
-            }
-            Event::End(end) => {
-                if end.name().as_ref() == b"D:multistatus" {
-                    break;
-                }
-            }
-            Event::Eof => return Err(ParseContactRefError::UnexpectedEof),
-            _ => {}
-        }
-    }
-
-    Ok(results)
-}
-
-fn parse_single_ref(
-    reader: &mut quick_xml::Reader<&[u8]>,
-) -> Result<ContactRef, ParseContactRefError> {
-    let mut href = None;
-    let mut etag = None;
-
-    loop {
-        match reader.read_event()? {
-            Event::Start(start) => match start.name().as_ref() {
-                b"D:href" => {
-                    if let Event::Text(t) = reader.read_event()? {
-                        href = Some(t.xml_content()?);
-                    }
-                    match reader.read_event()? {
-                        Event::End(end) => {
-                            if end.name().as_ref() != b"D:href" {
-                                return Err(ParseContactRefError::UnexpectedEvent);
-                            }
-                        }
-                        _ => {
-                            return Err(ParseContactRefError::UnexpectedEvent);
-                        }
-                    }
-                }
-                b"D:getetag" => {
-                    if let Event::Text(t) = reader.read_event()? {
-                        etag = Some(t.xml_content()?);
-                    }
-                    match reader.read_event()? {
-                        Event::End(end) => {
-                            if end.name().as_ref() != b"D:getetag" {
-                                return Err(ParseContactRefError::UnexpectedEvent);
-                            }
-                        }
-                        _ => return Err(ParseContactRefError::UnexpectedEvent),
-                    }
-                }
-                _ => {}
-            },
-            Event::End(end) => {
-                if end.name().as_ref() == b"D:response" {
-                    break;
-                }
-            }
-            Event::Eof => {
-                return Err(ParseContactRefError::UnexpectedEof);
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(href) = href {
-        Ok(ContactRef {
-            href: href.to_string(),
-            etag: etag.map(|etag| etag.to_string()),
-        })
-    } else {
-        Err(ParseContactRefError::MissingHref)
     }
 }

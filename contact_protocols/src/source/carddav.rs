@@ -1,8 +1,10 @@
-use dav_client::{carddav_client::CardDavClient, contact::Contact, vcard::parse_vcard};
+use dav_client::carddav_client::CardDavClient;
 use http::StatusCode;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::contact::Contact;
 
 use super::ContactSource;
 
@@ -55,8 +57,10 @@ impl ContactSource for CarddavSource {
         let contacts = self
             .client
             .fetch_contacts(&resource_list)
-            .await
-            .map(|vcard| parse_vcard(input))?;
+            .await?
+            .iter()
+            .map(Contact::from_vcard)
+            .collect();
 
         // let contacts = resource_list
         //     .resources

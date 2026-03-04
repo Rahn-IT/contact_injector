@@ -2,11 +2,10 @@ use std::{collections::HashMap, fmt::Display, hash::Hash};
 
 use crate::contact::Contact;
 use chrono::{Days, Utc};
-use http::{Uri, uri::InvalidUri};
-use hyper_util::{client::legacy::Client, rt::TokioExecutor};
+use dav_client::{caldav_client::CalDavClient, vobject::icalendar::ICalendar};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use tower_http::auth::AddAuthorization;
+use url::Url;
 use uuid::Uuid;
 
 use crate::ContactDestination;
@@ -19,8 +18,8 @@ pub struct CaldavAccessData {
 }
 
 pub struct CaldavBirthdayDestination {
-    client: (),
-    calendar_uri: Uri,
+    client: CalDavClient,
+    calendar_uri: Url,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -28,38 +27,28 @@ pub enum CaldavError {
     #[error("error while loading root certs: {0}")]
     LoadRootError(std::io::Error),
     #[error("inner error: {0}")]
-    Inner(#[from] libdav::dav::WebDavError),
+    Inner(#[from] dav_client::caldav_client::CalDavError),
     #[error("parse error: {0}")]
     ParseError(String),
     #[error("invalid addressbook URI: {0:?}")]
-    InvalidAddressbookUri(#[from] InvalidUri),
+    InvalidAddressbookUri(#[from] url::ParseError),
     #[error("todo")]
     Todo,
 }
 
 impl CaldavBirthdayDestination {
     pub async fn new(access_data: CaldavAccessData) -> Result<Self, CaldavError> {
-        let calendar_uri: Uri = access_data.url.parse()?;
+        let calendar_url: Url = access_data.url.parse()?;
         let username = access_data.username;
         let password = access_data.password;
 
-        let https_connector = HttpsConnectorBuilder::new()
-            .with_native_roots()
-            .map_err(CaldavError::LoadRootError)?
-            .https_or_http()
-            .enable_http1()
-            .build();
-        let http_client = Client::builder(TokioExecutor::new()).build(https_connector);
-        let auth_client = AddAuthorization::basic(http_client, &username, &password);
-        let webdav = WebDavClient::new(calendar_uri.clone(), auth_client);
+        let client = CalDavClient::new(calendar_url.clone(), &username, &password)?;
 
-        let client = libdav::CalDavClient::new(webdav);
-
-        client.list_resources(calendar_uri.path()).await?;
+        client.list_calendar_entries().await?;
 
         Ok(Self {
             client,
-            calendar_uri,
+            calendar_uri: calendar_url,
         })
     }
 }
@@ -72,22 +61,8 @@ impl ContactDestination for CaldavBirthdayDestination {
         contacts: impl Iterator<Item = &Contact>,
     ) -> Result<(), Self::Error> {
         println!("Exporting birthdays to CalDAV");
-        let resources = self.client.list_resources(self.calendar_uri.path()).await?;
-        let entries = self
-            .client
-            .get_calendar_resources(
-                self.calendar_uri.path(),
-                resources.iter().map(|r| r.href.as_str()),
-            )
-            .await?;
-
-        // println!("Resources: {:#?}", resources);
-
-        let entries = entries
-            .iter()
-            .map(|entry| entry.content.as_ref().unwrap().data.as_str())
-            .map(ICS::from_data)
-            .filter(ICS::is_mine);
+        let refs = self.client.list_calendar_entries().await?;
+        let entries = self.client.fetch_calendar_entries(&refs).await?;
 
         let mut found = HashMap::new();
 
@@ -130,50 +105,27 @@ impl CaldavBirthdayDestination {
     }
 }
 
-struct ICS(String);
+fn birthday_ical(contact: &Contact) -> Option<ICalendar> {
+    let birthday = contact.birthday.as_ref()?;
+    
+    
+    
+    let start = birthday.format("%Y%m%d").to_string();
+    let end = birthday
+        .checked_add_days(Days::new(1))
+        .unwrap()
+        .format("%Y%m%d")
+        .to_string();
+    
+    ICalendar
 
-impl Display for ICS {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+    let uid = Uuid::new_v4().to_string();
+    let now = Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
 
-impl ICS {
-    fn from_data(data: &str) -> Self {
-        #[allow(unstable_name_collisions)]
-        let data: String = data
-            .trim()
-            .lines()
-            .filter_map(|line| {
-                let trimmed = line.trim();
-                if trimmed.len() > 0 {
-                    Some(trimmed)
-                } else {
-                    None
-                }
-            })
-            .intersperse("\n")
-            .collect();
+    let name = &contact.display_name;
 
-        Self(data)
-    }
-
-    fn birthday(contact: &Contact) -> Option<Self> {
-        let birthday = contact.birthday.as_ref()?;
-        let start = birthday.format("%Y%m%d").to_string();
-        let end = birthday
-            .checked_add_days(Days::new(1))
-            .unwrap()
-            .format("%Y%m%d")
-            .to_string();
-
-        let uid = Uuid::new_v4().to_string();
-        let now = Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
-
-        let name = &contact.display_name;
-
-        let ics = format!(
-            "\
+    let ics = format!(
+        "\
             BEGIN:VCALENDAR
             PRODID:-//Rahn-IT/ContactInjector//EN
             VERSION:2.0
@@ -198,50 +150,5 @@ impl ICS {
             END:VEVENT
             END:VCALENDAR
             "
-        );
-
-        Some(Self::from_data(&ics))
-    }
-
-    fn is_mine(&self) -> bool {
-        self.0.contains("PRODID:-//Rahn-IT/ContactInjector//EN")
-    }
-
-    fn filtered_lines(&self) -> impl Iterator<Item = &str> {
-        self.0.lines().filter(|line| {
-            !line.starts_with("CREATED:")
-                && !line.starts_with("DTSTAMP:")
-                && !line.starts_with("LAST-MODIFIED:")
-                && !line.starts_with("UID:")
-                && !line.starts_with("SEQUENCE:")
-        })
-    }
-
-    fn id(&self) -> Option<String> {
-        let id_line = self.0.lines().find(|line| line.starts_with("UID:"))?;
-        let id = id_line[4..].to_string();
-        Some(id)
-    }
+    );
 }
-
-impl Hash for ICS {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        for line in self.filtered_lines() {
-            line.hash(state);
-        }
-    }
-}
-
-impl PartialEq for ICS {
-    fn eq(&self, other: &Self) -> bool {
-        for line in self.filtered_lines().zip(other.filtered_lines()) {
-            if line.0 != line.1 {
-                println!("Lines differ: {} != {}", line.0, line.1);
-                return false;
-            }
-        }
-        true
-    }
-}
-
-impl Eq for ICS {}
