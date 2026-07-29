@@ -10,7 +10,6 @@ http = "1.4.2"
 hyper-rustls = "0.27.9"
 hyper-util = "0.1.20"
 itertools = "0.15.0"
-nom = "8.0.0"
 quick-xml = { version = "0.41.0" }
 reqwest = { version = "0.13.4", features = ["json"] }
 serde = { version = "1.0.229", features = ["derive"] }

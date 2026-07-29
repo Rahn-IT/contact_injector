@@ -287,7 +287,6 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "itertools",
- "nom",
  "quick-xml",
  "reqwest",
  "serde",
@@ -407,7 +406,6 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.0",
  "chrono",
- "nom",
  "quick-xml",
  "reqwest",
  "thiserror",
@@ -1208,15 +1206,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "nom"
-version = "8.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
-dependencies = [
- "memchr",
 ]
 
 [[package]]

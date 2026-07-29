@@ -1,8 +1,6 @@
 use std::{fmt::Debug, hash::Hash};
 
 use crate::contact::{Contact, PhoneType};
-use nom::Input;
-
 use crate::destination::starface::{
     Attribute, Block, PhoneSchema, PhoneSchemaType, RawStarfaceContact, SummarySchema,
     SummarySchemaType, Tag, UploadContact,
@@ -207,8 +205,7 @@ fn sanitize_number(number: Option<&String>) -> String {
             return String::new();
         } else {
             number
-                .as_str()
-                .iter_elements()
+                .chars()
                 .filter(|c| c.is_ascii_digit() || c == &'+')
                 .collect()
         }
@@ -223,7 +220,7 @@ fn sanitize_number(number: Option<&String>) -> String {
     let mut sanitized = String::new();
 
     // replace 00 at start with + and keep existing +
-    let mut iter = number.as_str().iter_elements();
+    let mut iter = number.chars();
     let first = iter.next().unwrap();
     match first {
         '+' => {
