@@ -1,4 +1,8 @@
-use http::{HeaderMap, StatusCode, Uri, uri::InvalidUri};
+use http::{
+    HeaderMap, StatusCode, Uri,
+    header::InvalidHeaderValue,
+    uri::InvalidUri,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use std::collections::HashMap;
@@ -23,6 +27,12 @@ pub enum StarfaceError {
     UnknownError(StatusCode, String),
     #[error("Invalid URI: {0:?}")]
     InvalidUri(#[from] InvalidUri),
+    #[error("Invalid header value: {0}")]
+    InvalidHeaderValue(#[from] InvalidHeaderValue),
+    #[error("Starface has no contact tags")]
+    MissingContactTag,
+    #[error("Refusing to sync an empty contact list to Starface")]
+    EmptyContactList,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -95,7 +105,7 @@ impl StarfaceDestination {
             http::header::CONTENT_TYPE,
             "application/json".parse().unwrap(),
         );
-        headers.append("authToken", login_response.token.parse().unwrap());
+        headers.append("authToken", login_response.token.parse()?);
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
@@ -119,7 +129,10 @@ impl StarfaceDestination {
         Ok(Self {
             client,
             uri,
-            tag: tags.last().unwrap().clone(),
+            tag: tags
+                .last()
+                .ok_or(StarfaceError::MissingContactTag)?
+                .clone(),
         })
     }
 
@@ -134,12 +147,20 @@ impl StarfaceDestination {
 
         let upload = contact.to_upload(&self.tag);
 
-        let _response = self
+        let response = self
             .client
             .post(&contacts_endpoint)
             .json(&upload)
             .send()
             .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            eprintln!(
+                "[starface] contact upload failed with HTTP {status}; continuing sync. Response: {body}"
+            );
+        }
 
         Ok(())
     }
@@ -154,7 +175,15 @@ impl StarfaceDestination {
             id
         );
 
-        let _response = self.client.delete(&contacts_endpoint).send().await?;
+        let response = self.client.delete(&contacts_endpoint).send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            eprintln!(
+                "[starface] contact deletion failed for id {id} with HTTP {status}; continuing sync. Response: {body}"
+            );
+        }
 
         Ok(())
     }
@@ -190,6 +219,11 @@ impl ContactDestination for StarfaceDestination {
         &self,
         contacts: impl Iterator<Item = &crate::contact::Contact>,
     ) -> Result<(), Self::Error> {
+        let mut contacts = contacts.peekable();
+        if contacts.peek().is_none() {
+            return Err(StarfaceError::EmptyContactList);
+        }
+
         let contacts_endpoint = format!(
             "{}://{}/rest/contacts?pagesize=40",
             self.uri.scheme_str().ok_or(StarfaceError::MissingScheme)?,

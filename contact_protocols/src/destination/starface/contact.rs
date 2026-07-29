@@ -66,7 +66,14 @@ impl StarfaceContact {
         };
 
         for (index, name) in raw.summary_values.into_iter().enumerate() {
-            match summary_schema.attributes[index].name {
+            let Some(attribute) = summary_schema.attributes.get(index) else {
+                eprintln!(
+                    "[starface] contact {} has more summary values than schema attributes; ignoring remaining values",
+                    contact.id
+                );
+                break;
+            };
+            match attribute.name {
                 SummarySchemaType::FirstName => {
                     contact.first_name = name;
                 }
@@ -80,7 +87,14 @@ impl StarfaceContact {
         }
 
         for (index, phone) in raw.phone_numbers.into_iter().enumerate() {
-            match phone_schema.attributes[index].name {
+            let Some(attribute) = phone_schema.attributes.get(index) else {
+                eprintln!(
+                    "[starface] contact {} has more phone values than schema attributes; ignoring remaining values",
+                    contact.id
+                );
+                break;
+            };
+            match attribute.name {
                 PhoneSchemaType::Phone => {
                     contact.phone = phone;
                 }
@@ -195,12 +209,16 @@ fn sanitize_number(number: Option<&String>) -> String {
             number
                 .as_str()
                 .iter_elements()
-                .filter(|c| c.is_numeric() || c == &'+')
+                .filter(|c| c.is_ascii_digit() || c == &'+')
                 .collect()
         }
     } else {
         return String::new();
     };
+
+    if number.is_empty() {
+        return String::new();
+    }
 
     let mut sanitized = String::new();
 
@@ -224,9 +242,7 @@ fn sanitize_number(number: Option<&String>) -> String {
             sanitized.push_str("+49");
             sanitized.push_str(&number.replace('+', ""));
         }
-        _ => {
-            unreachable!();
-        }
+        _ => return String::new(),
     };
 
     sanitized
