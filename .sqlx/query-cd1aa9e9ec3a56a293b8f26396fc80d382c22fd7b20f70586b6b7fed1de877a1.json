@@ -1,16 +1,16 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT source_type, access_data FROM sources WHERE id = ?",
+  "query": "SELECT name, access_data FROM destinations WHERE id = ?",
   "describe": {
     "columns": [
       {
-        "name": "source_type",
+        "name": "name",
         "ordinal": 0,
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "sources",
-            "name": "source_type"
+            "table": "destinations",
+            "name": "name"
           }
         }
       },
@@ -20,7 +20,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "sources",
+            "table": "destinations",
             "name": "access_data"
           }
         }
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "97edb274a7825bc1806b9448641fd583fe6081402f1135e0b65c3fd0393eea50"
+  "hash": "cd1aa9e9ec3a56a293b8f26396fc80d382c22fd7b20f70586b6b7fed1de877a1"
 }

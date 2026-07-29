@@ -6,12 +6,24 @@
       {
         "name": "source",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "source"
+          }
+        }
       },
       {
         "name": "destination",
         "ordinal": 1,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "destination"
+          }
+        }
       }
     ],
     "parameters": {

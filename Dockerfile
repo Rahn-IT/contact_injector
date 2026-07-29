@@ -5,7 +5,10 @@ COPY Cargo.lock .
 COPY ./.sqlx ./.sqlx
 COPY ./contact_injector ./contact_injector
 COPY ./contact_protocols ./contact_protocols
+COPY ./dav-client ./dav-client
+ENV SQLX_OFFLINE=true
 RUN cargo build --release
+
 
 FROM debian:stable-slim AS runner
 RUN mkdir -p /app/db
