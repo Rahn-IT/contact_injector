@@ -4,20 +4,20 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-base64 = "0.22.1"
-chrono = "0.4.42"
-http = "1.4.0"
-hyper-rustls = "0.27.7"
-hyper-util = "0.1.19"
-itertools = "0.14.0"
+base64 = "0.23.0"
+chrono = "0.4.45"
+http = "1.4.2"
+hyper-rustls = "0.27.9"
+hyper-util = "0.1.20"
+itertools = "0.15.0"
 nom = "8.0.0"
-quick-xml = { version = "0.38.4" }
-reqwest = { version = "0.12.25", features = ["json"] }
-serde = { version = "1.0.228", features = ["derive"] }
-sha2 = "0.10.9"
-thiserror = "2.0.17"
-tokio = "1.48.0"
-tower-http = { version = "0.6.8", features = ["auth"] }
-uuid = { version = "1.19.0", features = ["v4"] }
+quick-xml = { version = "0.41.0" }
+reqwest = { version = "0.13.4", features = ["json"] }
+serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.11.0"
+thiserror = "2.0.19"
+tokio = "1.53.1"
+tower-http = { version = "0.7.0", features = ["auth"] }
+uuid = { version = "1.24.0", features = ["v4"] }
 dav-client = { path = "../dav-client" }
 url = "2.5.8"

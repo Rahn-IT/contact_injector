@@ -1,12 +1,7 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash};
-
 use crate::contact::Contact;
-use chrono::{Days, Utc};
-use dav_client::{caldav_client::CalDavClient, vobject::icalendar::ICalendar};
-use itertools::Itertools;
+use dav_client::caldav_client::CalDavClient;
 use serde::{Deserialize, Serialize};
 use url::Url;
-use uuid::Uuid;
 
 use crate::ContactDestination;
 
@@ -64,38 +59,54 @@ impl ContactDestination for CaldavBirthdayDestination {
         let refs = self.client.list_calendar_entries().await?;
         let entries = self.client.fetch_calendar_entries(&refs).await?;
 
-        let mut found = HashMap::new();
+        println!("Found {} existing entries", entries.len());
 
-        for entry in entries {
-            found.insert(entry, false);
-        }
-
-        println!("Found {} existing entries", found.len());
-
-        for birthday in contacts
-            .filter_map(|contact| ICS::birthday(contact))
-            .take(1)
-        {
-            // if found.contains_key(&birthday) {
-            if found.keys().next() == Some(&birthday) {
-                println!("=====Found birthday:=====\n{}", birthday);
-                found.insert(birthday, true);
-            } else {
-                println!("=====Adding birthday:=====\n{}", birthday);
-                self.add_ics(birthday).await?;
-            }
-        }
+        // Resource creation and birthday reconciliation are not implemented yet.
+        // Consume the iterator so callers can still supply any iterator type
+        // without leaving misleading partial synchronization behavior in place.
+        let _birthday_count = contacts.filter(|contact| contact.birthday.is_some()).count();
 
         Err(CaldavError::Todo)
     }
 }
 
-impl CaldavBirthdayDestination {
+/*
+TODO: Restore this prototype once `ICalendar` can be serialized and
+`CalDavClient::create_resource` has been implemented.
+
+The prototype previously used these additional imports:
+
+    use std::collections::HashMap;
+    use chrono::{Days, Utc};
+    use dav_client::vobject::icalendar::ICalendar;
+    use uuid::Uuid;
+
+Its intended reconciliation loop was:
+
+    let mut found = HashMap::new();
+
+    for entry in entries {
+        found.insert(entry, false);
+    }
+
+    for birthday in contacts
+        .filter_map(|contact| ICS::birthday(contact))
+        .take(1)
+    {
+        if found.keys().next() == Some(&birthday) {
+            println!("=====Found birthday:=====\n{}", birthday);
+            found.insert(birthday, true);
+        } else {
+            println!("=====Adding birthday:=====\n{}", birthday);
+            self.add_ics(birthday).await?;
+        }
+    }
+
+The planned resource writer was:
+
     async fn add_ics(&self, ics: ICS) -> Result<(), CaldavError> {
         let id = ics.id().unwrap();
-
         let url = format!("{}{}", self.calendar_uri.path(), id);
-        println!("Adding ICS to URL: {}", url);
 
         self.client
             .create_resource(&url, ics.0.into_bytes(), b"text/calendar")
@@ -103,29 +114,24 @@ impl CaldavBirthdayDestination {
 
         Ok(())
     }
-}
 
-fn birthday_ical(contact: &Contact) -> Option<ICalendar> {
-    let birthday = contact.birthday.as_ref()?;
-    
-    
-    
-    let start = birthday.format("%Y%m%d").to_string();
-    let end = birthday
-        .checked_add_days(Days::new(1))
-        .unwrap()
-        .format("%Y%m%d")
-        .to_string();
-    
-    ICalendar
+The incomplete birthday calendar builder was:
 
-    let uid = Uuid::new_v4().to_string();
-    let now = Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    fn birthday_ical(contact: &Contact) -> Option<ICalendar> {
+        let birthday = contact.birthday.as_ref()?;
+        let start = birthday.format("%Y%m%d").to_string();
+        let end = birthday
+            .checked_add_days(Days::new(1))
+            .unwrap()
+            .format("%Y%m%d")
+            .to_string();
 
-    let name = &contact.display_name;
+        let uid = Uuid::new_v4().to_string();
+        let now = Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+        let name = &contact.display_name;
 
-    let ics = format!(
-        "\
+        let ics = format!(
+            "\
             BEGIN:VCALENDAR
             PRODID:-//Rahn-IT/ContactInjector//EN
             VERSION:2.0
@@ -150,5 +156,9 @@ fn birthday_ical(contact: &Contact) -> Option<ICalendar> {
             END:VEVENT
             END:VCALENDAR
             "
-    );
-}
+        );
+
+        // Convert `ics` into `ICalendar` once serialization/parsing supports
+        // generated calendar resources, then return it here.
+    }
+*/

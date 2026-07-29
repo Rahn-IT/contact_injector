@@ -2,10 +2,7 @@ use reqwest::Url;
 
 use crate::{
     dav_client::{DavClient, DavError, ResourceRef},
-    vobject::{
-        icalendar::{ICalError, ICalendar},
-        vcard::{VCard, VCardError},
-    },
+    vobject::icalendar::{ICalError, ICalendar},
 };
 
 /// ---------- Error handling ----------
