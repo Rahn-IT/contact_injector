@@ -226,9 +226,14 @@ fn parse_multiget_response(
         match reader.read_event()? {
             Event::Start(start) => match start.local_name().as_ref() {
                 b"address-data" => {
-                    if let Event::Text(t) = reader.read_event()? {
-                        content = Some(t.decode()?.to_string());
-                    }
+                    let end = start.to_end().into_owned();
+                    let text = reader.read_text(end.name())?;
+                    let decoded = text.decode()?;
+                    content = Some(
+                        quick_xml::escape::unescape(&decoded)
+                            .map_err(quick_xml::Error::from)?
+                            .into_owned(),
+                    );
                 }
                 _ => {}
             },
@@ -405,7 +410,7 @@ mod tests {
       <d:prop>
         <c:address-data>BEGIN:VCARD
 VERSION:3.0
-FN:Example Contact
+FN:Example &amp; Contact
 END:VCARD</c:address-data>
       </d:prop>
     </d:propstat>
@@ -415,6 +420,7 @@ END:VCARD</c:address-data>
         let contacts = parse_multiget(xml).expect("response should parse");
 
         assert_eq!(contacts.len(), 1);
-        assert!(contacts[0].contains("FN:Example Contact"));
+        assert!(contacts[0].contains("FN:Example & Contact"));
+        assert!(contacts[0].ends_with("END:VCARD"));
     }
 }

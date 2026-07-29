@@ -71,9 +71,42 @@ impl CardDavClient {
             )
             .await?;
 
+        eprintln!(
+            "[carddav] parsing {} vCards returned for {} requested resources",
+            resources.len(),
+            refs.len()
+        );
+
         let contacts = resources
             .iter()
-            .map(|resource| VCard::parse(resource))
+            .enumerate()
+            .map(|(index, resource)| {
+                VCard::parse(resource).map_err(|error| {
+                    let requested_href = refs
+                        .get(index)
+                        .map(|resource| resource.href.as_str())
+                        .unwrap_or("<no matching requested resource>");
+                    let last_non_empty_line = resource
+                        .lines()
+                        .rev()
+                        .find(|line| !line.trim().is_empty())
+                        .unwrap_or("<empty vCard>");
+
+                    eprintln!("[carddav] failed to parse vCard at batch index {index}");
+                    eprintln!("[carddav] requested href at this index: {requested_href}");
+                    eprintln!("[carddav] parser error: {error}");
+                    eprintln!(
+                        "[carddav] payload: {} bytes, {} lines, begins with BEGIN:VCARD={}, ends with END:VCARD={}, last non-empty line={last_non_empty_line:?}",
+                        resource.len(),
+                        resource.lines().count(),
+                        resource.trim_start().starts_with("BEGIN:VCARD"),
+                        resource.trim_end().ends_with("END:VCARD"),
+                    );
+                    eprintln!("[carddav] raw failing vCard follows:\n{resource}");
+
+                    error
+                })
+            })
             .collect::<Result<_, VCardError>>()?;
 
         Ok(contacts)
