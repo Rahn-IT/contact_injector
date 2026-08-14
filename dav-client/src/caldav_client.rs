@@ -52,6 +52,43 @@ impl CalDavClient {
         Ok(refs)
     }
 
+    pub async fn list_events_by_uid_prefix(
+        &self,
+        uid_prefix: &str,
+    ) -> Result<Vec<ICalRef>, CalDavError> {
+        let refs = self
+            .client
+            .list_resources_by_property(
+                CALENDAR_QUERY,
+                CALDAV_NAMESPACE,
+                "VEVENT",
+                "UID",
+                uid_prefix,
+            )
+            .await?
+            .into_iter()
+            .map(ICalRef)
+            .collect();
+
+        Ok(refs)
+    }
+
+    pub async fn create_calendar_entry(
+        &self,
+        resource_name: &str,
+        calendar_data: String,
+    ) -> Result<(), CalDavError> {
+        self.client
+            .create_resource(resource_name, calendar_data, "text/calendar; charset=utf-8")
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_calendar_entry(&self, entry: &ICalRef) -> Result<(), CalDavError> {
+        self.client.delete_resource(&entry.0.href).await?;
+        Ok(())
+    }
+
     pub async fn fetch_calendar_entries(
         &self,
         contacts: &[ICalRef],

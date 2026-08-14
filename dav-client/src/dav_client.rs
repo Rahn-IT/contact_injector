@@ -22,6 +22,9 @@ pub enum DavError {
     #[error("utf8 error: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
 
+    #[error("invalid URL: {0}")]
+    InvalidUrl(#[from] url::ParseError),
+
     #[error("unexpected response: {0}")]
     UnexpectedResponse(String),
 
@@ -100,6 +103,119 @@ impl DavClient {
 
         let bytes = resp.bytes().await?;
         Ok(parse_resource_refs(&bytes)?)
+    }
+
+    pub async fn list_resources_by_property(
+        &self,
+        query_type: &str,
+        dav_specialisation_namespace: &str,
+        component: &str,
+        property: &str,
+        text_match: &str,
+    ) -> Result<Vec<ResourceRef>, DavError> {
+        let mut writer = quick_xml::Writer::new(Cursor::new(Vec::<u8>::new()));
+
+        writer
+            .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))
+            .unwrap();
+
+        writer
+            .create_element(query_type)
+            .with_attribute(("xmlns:d", "DAV:"))
+            .with_attribute(("xmlns:c", dav_specialisation_namespace))
+            .write_inner_content(|writer| {
+                writer
+                    .create_element("d:prop")
+                    .write_inner_content(|writer| {
+                        writer.create_element("d:getetag").write_empty()?;
+                        Ok(())
+                    })?;
+                writer
+                    .create_element("c:filter")
+                    .write_inner_content(|writer| {
+                        writer
+                            .create_element("c:comp-filter")
+                            .with_attribute(("name", "VCALENDAR"))
+                            .write_inner_content(|writer| {
+                                writer
+                                    .create_element("c:comp-filter")
+                                    .with_attribute(("name", component))
+                                    .write_inner_content(|writer| {
+                                        writer
+                                            .create_element("c:prop-filter")
+                                            .with_attribute(("name", property))
+                                            .write_inner_content(|writer| {
+                                                writer
+                                                    .create_element("c:text-match")
+                                                    .with_attribute((
+                                                        "collation",
+                                                        "i;ascii-casemap",
+                                                    ))
+                                                    .write_text_content(BytesText::new(
+                                                        text_match,
+                                                    ))?;
+                                                Ok(())
+                                            })?;
+                                        Ok(())
+                                    })?;
+                                Ok(())
+                            })?;
+                        Ok(())
+                    })?;
+                Ok(())
+            })
+            .expect("Writing to a Vec is unlikely to fail");
+
+        let response = self
+            .client
+            .request(
+                reqwest::Method::from_bytes(b"REPORT").unwrap(),
+                self.collection_url.clone(),
+            )
+            .header("Depth", "1")
+            .header("Content-Type", "application/xml")
+            .body(writer.into_inner().into_inner())
+            .send()
+            .await?
+            .error_for_status()?;
+
+        Ok(parse_resource_refs(&response.bytes().await?)?)
+    }
+
+    pub async fn create_resource(
+        &self,
+        resource_name: &str,
+        content: String,
+        content_type: &str,
+    ) -> Result<(), DavError> {
+        let mut resource_url = self.collection_url.clone();
+        let path = format!(
+            "{}/{}",
+            resource_url.path().trim_end_matches('/'),
+            resource_name
+        );
+        resource_url.set_path(&path);
+
+        self.client
+            .put(resource_url)
+            .header("Content-Type", content_type)
+            .header("If-None-Match", "*")
+            .body(content)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        Ok(())
+    }
+
+    pub async fn delete_resource(&self, href: &str) -> Result<(), DavError> {
+        self.client
+            .delete(self.collection_url.join(href)?)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        Ok(())
     }
 
     pub async fn multiget(
