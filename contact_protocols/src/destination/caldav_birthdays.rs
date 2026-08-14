@@ -2,8 +2,9 @@ use crate::contact::Contact;
 use chrono::{Days, Utc};
 use dav_client::caldav_client::CalDavClient;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use url::Url;
-use uuid::Uuid;
 
 use crate::ContactDestination;
 
@@ -66,30 +67,50 @@ impl ContactDestination for CaldavBirthdayDestination {
             .filter_map(birthday_calendar_entry)
             .collect::<Result<Vec<_>, _>>()?;
 
+        let existing_names = existing
+            .iter()
+            .filter_map(|entry| entry.resource_name())
+            .map(str::to_owned)
+            .collect::<HashSet<_>>();
+        let desired_names = birthdays
+            .iter()
+            .map(|entry| entry.resource_name.clone())
+            .collect::<HashSet<_>>();
+        let unchanged_count = desired_names.intersection(&existing_names).count();
+        let to_create = birthdays
+            .into_iter()
+            .filter(|entry| !existing_names.contains(entry.resource_name.as_str()))
+            .collect::<Vec<_>>();
+        let to_delete = existing
+            .iter()
+            .filter(|entry| {
+                entry
+                    .resource_name()
+                    .is_none_or(|name| !desired_names.contains(name))
+            })
+            .collect::<Vec<_>>();
+
         println!(
-            "Found {} existing managed entries; creating {} birthday entries",
+            "Found {} existing managed entries; keeping {}, creating {}, deleting {}",
             existing.len(),
-            birthdays.len()
+            unchanged_count,
+            to_create.len(),
+            to_delete.len()
         );
-        let birthday_count = birthdays.len();
 
         // Create everything first. If one creation fails, the existing working
         // calendar remains intact and the next run will clean up the partial set.
-        for birthday in birthdays {
+        for birthday in to_create {
             self.client
                 .create_calendar_entry(&birthday.resource_name, birthday.data)
                 .await?;
         }
 
-        for entry in &existing {
+        for entry in to_delete {
             self.client.delete_calendar_entry(entry).await?;
         }
 
-        println!(
-            "Birthday calendar sync complete: deleted {}, created {}",
-            existing.len(),
-            birthday_count
-        );
+        println!("Birthday calendar sync complete");
 
         Ok(())
     }
@@ -106,7 +127,7 @@ fn birthday_calendar_entry(contact: &Contact) -> Option<Result<CalendarEntry, Ca
         Some(end) => end,
         None => return Some(Err(CaldavError::BirthdayDateOverflow)),
     };
-    let id = Uuid::new_v4();
+    let id = birthday_id(contact, birthday);
     let uid = format!("{UID_PREFIX}{id}@{UID_DOMAIN}");
     let resource_name = format!("{UID_PREFIX}{id}.ics");
     let now = Utc::now().format("%Y%m%dT%H%M%SZ");
@@ -146,6 +167,23 @@ fn birthday_calendar_entry(contact: &Contact) -> Option<Result<CalendarEntry, Ca
         resource_name,
         data,
     }))
+}
+
+fn birthday_id(contact: &Contact, birthday: chrono::NaiveDate) -> String {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, contact.uid.as_deref().unwrap_or_default());
+    hash_field(&mut hasher, &contact.display_name);
+    hash_field(&mut hasher, &birthday.format("%Y%m%d").to_string());
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn hash_field(hasher: &mut Sha256, value: &str) {
+    hasher.update(value.len().to_be_bytes());
+    hasher.update(value.as_bytes());
 }
 
 fn escape_ical_text(value: &str) -> String {
@@ -207,6 +245,37 @@ mod tests {
                 .contains("SUMMARY:Birthday: Doe\\, Jane\\; R&D\r\n")
         );
         assert!(entry.data.ends_with("END:VCALENDAR\r\n"));
+    }
+
+    #[test]
+    fn uses_stable_resource_names_for_unchanged_birthdays() {
+        let contact = Contact {
+            display_name: "Jane Doe".to_string(),
+            birthday: Some(NaiveDate::from_ymd_opt(1990, 5, 6).unwrap()),
+            uid: Some("contact-123".to_string()),
+            ..Default::default()
+        };
+
+        let first = birthday_calendar_entry(&contact).unwrap().unwrap();
+        let second = birthday_calendar_entry(&contact).unwrap().unwrap();
+
+        assert_eq!(first.resource_name, second.resource_name);
+    }
+
+    #[test]
+    fn changes_resource_name_when_birthday_content_changes() {
+        let mut contact = Contact {
+            display_name: "Jane Doe".to_string(),
+            birthday: Some(NaiveDate::from_ymd_opt(1990, 5, 6).unwrap()),
+            uid: Some("contact-123".to_string()),
+            ..Default::default()
+        };
+
+        let original = birthday_calendar_entry(&contact).unwrap().unwrap();
+        contact.display_name = "Jane Smith".to_string();
+        let changed = birthday_calendar_entry(&contact).unwrap().unwrap();
+
+        assert_ne!(original.resource_name, changed.resource_name);
     }
 
     #[test]

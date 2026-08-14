@@ -20,6 +20,12 @@ pub enum CalDavError {
 #[derive(Debug, Clone)]
 pub struct ICalRef(ResourceRef);
 
+impl ICalRef {
+    pub fn resource_name(&self) -> Option<&str> {
+        self.0.href.trim_end_matches('/').rsplit('/').next()
+    }
+}
+
 #[derive(Clone)]
 pub struct CalDavClient {
     client: DavClient,

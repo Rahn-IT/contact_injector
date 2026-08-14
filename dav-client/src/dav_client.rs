@@ -2,7 +2,6 @@ use std::io::Cursor;
 
 use base64::{Engine, engine::general_purpose};
 use quick_xml::events::{BytesDecl, BytesText, Event};
-use quick_xml::XmlVersion;
 use reqwest::{
     Url,
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
@@ -376,8 +375,6 @@ pub enum ParseResourceRefError {
     MissingDecl,
     #[error("unexpected end of file")]
     UnexpectedEof,
-    #[error("unexpected event")]
-    UnexpectedEvent,
     #[error("missing href")]
     MissingHref,
     #[error("encoding error")]
@@ -437,32 +434,10 @@ fn parse_single_ref(
         match reader.read_event()? {
             Event::Start(start) => match start.local_name().as_ref() {
                 b"href" => {
-                    if let Event::Text(t) = reader.read_event()? {
-                        href = Some(t.xml_content(XmlVersion::Explicit1_0)?);
-                    }
-                    match reader.read_event()? {
-                        Event::End(end) => {
-                            if end.local_name().as_ref() != b"href" {
-                                return Err(ParseResourceRefError::UnexpectedEvent);
-                            }
-                        }
-                        _ => {
-                            return Err(ParseResourceRefError::UnexpectedEvent);
-                        }
-                    }
+                    href = Some(read_element_text(reader, b"href")?);
                 }
                 b"getetag" => {
-                    if let Event::Text(t) = reader.read_event()? {
-                        etag = Some(t.xml_content(XmlVersion::Explicit1_0)?);
-                    }
-                    match reader.read_event()? {
-                        Event::End(end) => {
-                            if end.local_name().as_ref() != b"getetag" {
-                                return Err(ParseResourceRefError::UnexpectedEvent);
-                            }
-                        }
-                        _ => return Err(ParseResourceRefError::UnexpectedEvent),
-                    }
+                    etag = Some(read_element_text(reader, b"getetag")?);
                 }
                 _ => {}
             },
@@ -486,6 +461,31 @@ fn parse_single_ref(
     } else {
         Err(ParseResourceRefError::MissingHref)
     }
+}
+
+fn read_element_text(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    element_name: &[u8],
+) -> Result<String, ParseResourceRefError> {
+    let mut value = String::new();
+
+    loop {
+        match reader.read_event()? {
+            Event::Text(text) => {
+                let decoded = text.decode()?;
+                value.push_str(
+                    &quick_xml::escape::unescape(&decoded)
+                        .map_err(quick_xml::Error::from)?,
+                );
+            }
+            Event::CData(cdata) => value.push_str(&cdata.decode()?),
+            Event::End(end) if end.local_name().as_ref() == element_name => break,
+            Event::Eof => return Err(ParseResourceRefError::UnexpectedEof),
+            _ => {}
+        }
+    }
+
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -514,6 +514,31 @@ mod tests {
             "/addressbooks/user/default/contact.vcf"
         );
         assert_eq!(resources[0].etag.as_deref(), Some("\"123\""));
+    }
+
+    #[test]
+    fn parses_resource_refs_with_cdata_values() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href><![CDATA[/calendars/user/birthdays/contact.ics]]></d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag><![CDATA["birthday-etag"]]></d:getetag>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>"#;
+
+        let resources = parse_resource_refs(xml).expect("response should parse");
+
+        assert_eq!(resources.len(), 1);
+        assert_eq!(
+            resources[0].href,
+            "/calendars/user/birthdays/contact.ics"
+        );
+        assert_eq!(resources[0].etag.as_deref(), Some("\"birthday-etag\""));
     }
 
     #[test]
