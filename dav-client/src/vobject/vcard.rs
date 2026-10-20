@@ -265,7 +265,7 @@ impl VCard {
         let revision = vobject.get_property_value("REV").and_then(parse_datetime);
 
         let uid = vobject.get_property_value("UID").map(parse_text);
-        let org = vobject.get_property_value("ORG").map(|org| org.to_string());
+        let org = vobject.get_property("ORG").map(parse_organization);
         let title = vobject.get_property_value("TITLE").map(parse_text);
 
         let urls = vobject
@@ -321,6 +321,25 @@ impl VCard {
             attachments,
         })
     }
+}
+
+fn parse_organization(property: &crate::vobject::VProperty) -> String {
+    // The generic parser splits commas; ORG is one structured value.
+    let raw = property.values.join(",");
+    let mut escaped = false;
+    let company = raw
+        .split(|character| {
+            let separator = character == ';' && !escaped;
+            escaped = character == '\\' && !escaped;
+            separator
+        })
+        .next()
+        .unwrap_or_default();
+    company
+        .split(r"\\")
+        .map(parse_text)
+        .collect::<Vec<_>>()
+        .join("\\")
 }
 
 fn parse_name(raw: &str) -> Name {
@@ -436,4 +455,28 @@ fn parse_datetime(raw: &str) -> Option<chrono::NaiveDateTime> {
 
 fn parse_binary(raw: &str) -> Option<Vec<u8>> {
     base64::Engine::decode(&base64::prelude::BASE64_STANDARD, raw).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VCard;
+
+    #[test]
+    fn parses_company_component_and_preserves_escaped_punctuation() {
+        for (raw, expected) in [
+            ("BASF;", "BASF"),
+            ("BASF;Engineering;Support", "BASF"),
+            (r"BASF\; Group;", "BASF; Group"),
+            (r"Example\, Inc.;", "Example, Inc."),
+            (r"Example\\;Engineering", "Example\\"),
+            (r"Example\\\; Group;", "Example\\; Group"),
+            (r"Example\\north;", "Example\\north"),
+        ] {
+            let card = VCard::parse(&format!(
+                "BEGIN:VCARD\nVERSION:3.0\nFN:Example\nORG:{raw}\nEND:VCARD"
+            ))
+            .unwrap();
+            assert_eq!(card.org.as_deref(), Some(expected), "ORG:{raw}");
+        }
+    }
 }
