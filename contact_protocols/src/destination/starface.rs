@@ -1,20 +1,19 @@
-use http::{
-    HeaderMap, StatusCode, Uri,
-    header::InvalidHeaderValue,
-    uri::InvalidUri,
-};
+//! Adapter for Starface phone systems.
+
+use http::{HeaderMap, StatusCode, Uri, header::InvalidHeaderValue, uri::InvalidUri};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use std::collections::HashMap;
 use std::fmt::Write;
-use thiserror::Error;
 
-use crate::{ContactDestination, destination::starface::contact::StarfaceContact};
+use crate::ContactDestination;
 
+mod batch;
 mod contact;
 
-#[derive(Debug, Error)]
-pub enum StarfaceError {
+/// A failed adapter operation with its underlying cause.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
     #[error("Missing authority in URI")]
     MissingAuthority,
     #[error("Missing scheme in URI")]
@@ -35,15 +34,17 @@ pub enum StarfaceError {
     EmptyContactList,
 }
 
+/// Raw connection settings serialized at the application boundary.
 #[derive(Serialize, Deserialize)]
-pub struct StarfaceAccessData {
+pub struct AccessData {
     pub url: String,
     pub username: String,
     pub password: String,
 }
 
-impl StarfaceDestination {
-    pub async fn new(access_data: StarfaceAccessData) -> Result<Self, StarfaceError> {
+impl Destination {
+    /// Connects using the supplied settings and checks remote access.
+    pub async fn new(access_data: AccessData) -> Result<Self, Error> {
         let uri: Uri = access_data.url.parse()?;
         let username = access_data.username;
         let password = access_data.password;
@@ -52,9 +53,9 @@ impl StarfaceDestination {
 
         headers.append(
             http::header::CONTENT_TYPE,
-            "application/json".parse().unwrap(),
+            http::HeaderValue::from_static("application/json"),
         );
-        headers.append("X-Version", "2".parse().unwrap());
+        headers.append("X-Version", http::HeaderValue::from_static("2"));
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
@@ -62,8 +63,8 @@ impl StarfaceDestination {
 
         let login_endpoint = format!(
             "{}://{}{}",
-            uri.scheme_str().ok_or(StarfaceError::MissingScheme)?,
-            uri.authority().ok_or(StarfaceError::MissingAuthority)?,
+            uri.scheme_str().ok_or(Error::MissingScheme)?,
+            uri.authority().ok_or(Error::MissingAuthority)?,
             "/rest/login"
         );
 
@@ -88,9 +89,9 @@ impl StarfaceDestination {
 
         match response.status() {
             StatusCode::OK => {}
-            StatusCode::BAD_REQUEST => return Err(StarfaceError::AuthenticationFailed),
+            StatusCode::BAD_REQUEST => return Err(Error::AuthenticationFailed),
             status => {
-                return Err(StarfaceError::UnknownError(
+                return Err(Error::UnknownError(
                     status,
                     response.text().await.unwrap_or_else(|_| String::new()),
                 ));
@@ -103,7 +104,7 @@ impl StarfaceDestination {
 
         headers.append(
             http::header::CONTENT_TYPE,
-            "application/json".parse().unwrap(),
+            http::HeaderValue::from_static("application/json"),
         );
         headers.append("authToken", login_response.token.parse()?);
 
@@ -113,8 +114,8 @@ impl StarfaceDestination {
 
         let tag_endpoint = format!(
             "{}://{}/rest/contacts/tags",
-            uri.scheme_str().ok_or(StarfaceError::MissingScheme)?,
-            uri.authority().ok_or(StarfaceError::MissingAuthority)?,
+            uri.scheme_str().ok_or(Error::MissingScheme)?,
+            uri.authority().ok_or(Error::MissingAuthority)?,
         );
 
         let tags = client
@@ -124,25 +125,18 @@ impl StarfaceDestination {
             .json::<Vec<Tag>>()
             .await?;
 
-        // println!("Tags: {:?}", tags);
-
         Ok(Self {
             client,
             uri,
-            tag: tags
-                .last()
-                .ok_or(StarfaceError::MissingContactTag)?
-                .clone(),
+            tag: tags.last().ok_or(Error::MissingContactTag)?.clone(),
         })
     }
 
-    async fn upload_contact(&self, contact: &StarfaceContact) -> Result<(), StarfaceError> {
+    async fn upload_contact(&self, contact: &contact::Contact) -> Result<(), Error> {
         let contacts_endpoint = format!(
             "{}://{}/rest/contacts",
-            self.uri.scheme_str().ok_or(StarfaceError::MissingScheme)?,
-            self.uri
-                .authority()
-                .ok_or(StarfaceError::MissingAuthority)?,
+            self.uri.scheme_str().ok_or(Error::MissingScheme)?,
+            self.uri.authority().ok_or(Error::MissingAuthority)?,
         );
 
         let upload = contact.to_upload(&self.tag);
@@ -154,49 +148,35 @@ impl StarfaceDestination {
             .send()
             .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            eprintln!(
-                "[starface] contact upload failed with HTTP {status}; continuing sync. Response: {body}"
-            );
-        }
+        response.error_for_status()?;
 
         Ok(())
     }
 
-    async fn delete_contact(&self, id: &str) -> Result<(), StarfaceError> {
+    async fn delete_contact(&self, id: &str) -> Result<(), Error> {
         let contacts_endpoint = format!(
             "{}://{}/rest/contacts/{}",
-            self.uri.scheme_str().ok_or(StarfaceError::MissingScheme)?,
-            self.uri
-                .authority()
-                .ok_or(StarfaceError::MissingAuthority)?,
+            self.uri.scheme_str().ok_or(Error::MissingScheme)?,
+            self.uri.authority().ok_or(Error::MissingAuthority)?,
             id
         );
 
         let response = self.client.delete(&contacts_endpoint).send().await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            eprintln!(
-                "[starface] contact deletion failed for id {id} with HTTP {status}; continuing sync. Response: {body}"
-            );
-        }
+        response.error_for_status()?;
 
         Ok(())
     }
 }
 
 impl ContactResponse {
-    fn parse(self) -> Vec<StarfaceContact> {
+    fn parse(self) -> Vec<contact::Contact> {
         self.contacts
             .into_iter()
             // We don't want to try and delete contacts which are just system users
             .filter(|raw| raw.additional_values.user_account_id.is_none())
             .map(|raw| {
-                StarfaceContact::from_raw(
+                contact::Contact::from_raw(
                     raw,
                     &self.summary_block_schema,
                     &self.phone_numbers_block_schema,
@@ -212,24 +192,19 @@ struct AdditionalValues {
     user_account_id: Option<String>,
 }
 
-impl ContactDestination for StarfaceDestination {
-    type Error = StarfaceError;
+impl ContactDestination for Destination {
+    type Error = Error;
 
     async fn export_contacts(
         &self,
         contacts: impl Iterator<Item = &crate::contact::Contact>,
     ) -> Result<(), Self::Error> {
-        let mut contacts = contacts.peekable();
-        if contacts.peek().is_none() {
-            return Err(StarfaceError::EmptyContactList);
-        }
+        let contacts = batch::Batch::try_from_contacts(contacts)?;
 
         let contacts_endpoint = format!(
             "{}://{}/rest/contacts?pagesize=40",
-            self.uri.scheme_str().ok_or(StarfaceError::MissingScheme)?,
-            self.uri
-                .authority()
-                .ok_or(StarfaceError::MissingAuthority)?,
+            self.uri.scheme_str().ok_or(Error::MissingScheme)?,
+            self.uri.authority().ok_or(Error::MissingAuthority)?,
         );
 
         // println!(
@@ -259,7 +234,7 @@ impl ContactDestination for StarfaceDestination {
         // DO NOT PARALLELIZE THIS LOOP
         // Last time I tried, the starface would just delete all contacts
         for page in 1..total_pages {
-            let page_endpoint = format!("{}&page={}", &contacts_endpoint, page);
+            let page_endpoint = format!("{}&page={}", contacts_endpoint, page);
             let page_response = self
                 .client
                 .get(&page_endpoint)
@@ -282,7 +257,7 @@ impl ContactDestination for StarfaceDestination {
         let mut deleted = 0;
         let mut unchanged = 0;
 
-        for contact in contacts.filter_map(|contact| StarfaceContact::from_contact(contact)) {
+        for contact in contacts {
             if let Some(found) = existing_contacts.get_mut(&contact) {
                 *found = true;
                 unchanged += 1;
@@ -316,7 +291,7 @@ struct ContactResponse {
     phone_numbers_block_schema: PhoneSchema,
     #[serde(rename = "summaryBlockSchema")]
     summary_block_schema: SummarySchema,
-    contacts: Vec<RawStarfaceContact>,
+    contacts: Vec<RawContact>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -327,7 +302,7 @@ struct Metadata {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct RawStarfaceContact {
+struct RawContact {
     id: String,
     #[serde(rename = "summaryValues")]
     summary_values: Vec<String>,
@@ -392,7 +367,8 @@ struct LoginResponse {
     token: String,
 }
 
-pub struct StarfaceDestination {
+/// An authenticated destination ready to export contacts.
+pub struct Destination {
     uri: Uri,
     client: reqwest::Client,
     tag: Tag,
@@ -401,7 +377,7 @@ pub struct StarfaceDestination {
 fn to_hex<'a>(value: impl ExactSizeIterator<Item = &'a u8>) -> String {
     let mut hex = String::with_capacity(2 * value.len());
     for byte in value {
-        write!(&mut hex, "{:02x}", byte).unwrap();
+        write!(&mut hex, "{:02x}", byte).expect("formatting into a String cannot fail");
     }
     hex
 }
@@ -431,4 +407,110 @@ struct Tag {
     id: String,
     name: String,
     alias: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+        sync::mpsc,
+    };
+
+    use super::{Destination, Tag};
+    use crate::{ContactDestination, contact};
+
+    #[tokio::test]
+    async fn rejected_replacement_does_not_delete_the_existing_contact() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let uri = format!("http://{}", listener.local_addr().unwrap())
+            .parse()
+            .unwrap();
+        let (send, mut requests) = mpsc::unbounded_channel();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut buffer = Vec::new();
+                let mut chunk = [0; 4096];
+                let header_end = loop {
+                    let count = stream.read(&mut chunk).await.unwrap();
+                    assert_ne!(count, 0);
+                    buffer.extend_from_slice(&chunk[..count]);
+                    if let Some(offset) = buffer.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                        break offset + 4;
+                    }
+                };
+                let headers = String::from_utf8(buffer[..header_end].to_vec()).unwrap();
+                let content_length: usize = headers
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse().unwrap())
+                    })
+                    .unwrap_or(0);
+                while buffer.len() < header_end + content_length {
+                    let count = stream.read(&mut chunk).await.unwrap();
+                    assert_ne!(count, 0);
+                    buffer.extend_from_slice(&chunk[..count]);
+                }
+                let method = headers.split_whitespace().next().unwrap();
+                send.send(method.to_owned()).unwrap();
+                let (status, body) = if method == "GET" {
+                    (
+                        "200 OK",
+                        r#"{
+                    "metadata": {"page": 0, "totalPages": 1},
+                    "phoneNumbersBlockSchema": {"attributes": []},
+                    "summaryBlockSchema": {"attributes": [{"name": "firstname"}]},
+                    "contacts": [{"id": "existing", "summaryValues": ["Old name"],
+                        "phoneNumberValues": [], "additionalValues": {}}]
+                }"#,
+                    )
+                } else {
+                    ("500 Internal Server Error", "replacement rejected")
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let destination = Destination {
+            uri,
+            client: reqwest::Client::builder().no_proxy().build().unwrap(),
+            tag: Tag {
+                id: "test".into(),
+                name: "test".into(),
+                alias: "test".into(),
+            },
+        };
+        let contacts = [contact::Contact {
+            name: contact::Name {
+                given_name: Some("New name".into()),
+                ..contact::Name::default()
+            },
+            ..contact::Contact::default()
+        }];
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            destination.export_contacts(contacts.iter()),
+        )
+        .await
+        .unwrap();
+        assert!(result.is_err());
+        assert_eq!(requests.try_recv().unwrap(), "GET");
+        assert_eq!(requests.try_recv().unwrap(), "POST");
+        assert!(
+            requests.try_recv().is_err(),
+            "a failed upload must stop before DELETE"
+        );
+        // Deletion failures also propagate instead of producing a successful sync.
+        assert!(destination.delete_contact("existing").await.is_err());
+        assert_eq!(requests.try_recv().unwrap(), "DELETE");
+        server.abort();
+    }
 }

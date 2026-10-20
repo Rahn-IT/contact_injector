@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
+thiserror = "2.0.19"
 axum = "0.8.9"
 chrono = "0.4.45"
 http = "1.4.2"

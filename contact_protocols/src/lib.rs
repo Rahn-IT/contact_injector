@@ -1,4 +1,4 @@
-mod carddav_client;
+//! Contact models and adapters for address books, phone systems, and calendars.
 pub mod contact;
 mod destination;
 mod source;

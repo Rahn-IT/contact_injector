@@ -3,28 +3,28 @@ use axum::{
     extract::{Path, State},
     response::{Html, Redirect},
 };
-use contact_protocols::caldav_birthdays::CaldavAccessData;
+use contact_protocols::caldav_birthdays;
 use serde::{Deserialize, Serialize};
 
-use crate::{AppError, AppState};
+use crate::{error, state};
 
 #[derive(Serialize, Deserialize)]
-pub struct CaldavDestinationForm {
+pub struct FormData {
     name: String,
     url: String,
     username: String,
     password: String,
 }
 
-pub async fn new_get(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+pub async fn new_get(State(state): State<state::State>) -> Result<Html<String>, error::Error> {
     caldav_edit(state, None)
 }
 
 pub async fn new_post(
-    State(state): State<AppState>,
-    Form(form): Form<CaldavDestinationForm>,
-) -> Result<Redirect, AppError> {
-    let access_data = CaldavAccessData {
+    State(state): State<state::State>,
+    Form(form): Form<FormData>,
+) -> Result<Redirect, error::Error> {
+    let access_data = caldav_birthdays::AccessData {
         url: form.url,
         username: form.username,
         password: form.password,
@@ -39,16 +39,15 @@ pub async fn new_post(
         access_data_json
     )
     .execute(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     Ok(Redirect::to("/destinations"))
 }
 
 pub async fn edit_get(
-    State(state): State<AppState>,
+    State(state): State<state::State>,
     Path(id): Path<i64>,
-) -> Result<Html<String>, AppError> {
+) -> Result<Html<String>, error::Error> {
     let destination = sqlx::query!(
         "SELECT name, access_data FROM destinations WHERE id = ?",
         id
@@ -56,9 +55,9 @@ pub async fn edit_get(
     .fetch_one(&state.db)
     .await?;
 
-    let access_data: CaldavAccessData = serde_json::from_str(&destination.access_data)?;
+    let access_data: caldav_birthdays::AccessData = serde_json::from_str(&destination.access_data)?;
 
-    let form_data = CaldavDestinationForm {
+    let form_data = FormData {
         name: destination.name,
         url: access_data.url,
         username: access_data.username,
@@ -69,11 +68,11 @@ pub async fn edit_get(
 }
 
 pub async fn edit_post(
-    State(state): State<AppState>,
+    State(state): State<state::State>,
     Path(id): Path<i64>,
-    Form(form): Form<CaldavDestinationForm>,
-) -> Result<Redirect, AppError> {
-    let access_data = CaldavAccessData {
+    Form(form): Form<FormData>,
+) -> Result<Redirect, error::Error> {
+    let access_data = caldav_birthdays::AccessData {
         url: form.url,
         username: form.username,
         password: form.password,
@@ -93,14 +92,8 @@ pub async fn edit_post(
     Ok(Redirect::to("/destinations"))
 }
 
-fn caldav_edit(
-    state: AppState,
-    data: Option<CaldavDestinationForm>,
-) -> Result<Html<String>, AppError> {
-    let template = state
-        .jinja
-        .get_template("caldav_destination.html")
-        .expect("template is loaded");
-    let rendered = template.render(data).unwrap();
+fn caldav_edit(state: state::State, data: Option<FormData>) -> Result<Html<String>, error::Error> {
+    let template = state.jinja.get_template("caldav_destination.html")?;
+    let rendered = template.render(data)?;
     Ok(Html(rendered))
 }

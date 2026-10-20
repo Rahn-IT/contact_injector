@@ -56,7 +56,7 @@ impl DavClient {
 
         Ok(Self {
             client,
-            collection_url: collection_url.into(),
+            collection_url,
         })
     }
 
@@ -69,7 +69,7 @@ impl DavClient {
 
         writer
             .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))
-            .unwrap();
+            .expect("writing XML into a Vec cannot fail");
 
         writer
             .create_element(query_type)
@@ -90,7 +90,7 @@ impl DavClient {
         let resp = self
             .client
             .request(
-                reqwest::Method::from_bytes(b"REPORT").unwrap(),
+                reqwest::Method::from_bytes(b"REPORT").expect("REPORT is a valid HTTP method"),
                 self.collection_url.clone(),
             )
             .header("Depth", "1")
@@ -116,7 +116,7 @@ impl DavClient {
 
         writer
             .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))
-            .unwrap();
+            .expect("writing XML into a Vec cannot fail");
 
         writer
             .create_element(query_type)
@@ -168,7 +168,7 @@ impl DavClient {
         let response = self
             .client
             .request(
-                reqwest::Method::from_bytes(b"REPORT").unwrap(),
+                reqwest::Method::from_bytes(b"REPORT").expect("REPORT is a valid HTTP method"),
                 self.collection_url.clone(),
             )
             .header("Depth", "1")
@@ -228,7 +228,7 @@ impl DavClient {
 
         writer
             .write_event(Event::Decl(BytesDecl::new("1.0", Some("utf-8"), None)))
-            .unwrap();
+            .expect("writing XML into a Vec cannot fail");
 
         writer
             .create_element(query_type)
@@ -251,14 +251,14 @@ impl DavClient {
                 }
                 Ok(())
             })
-            .unwrap();
+            .expect("writing XML into a Vec cannot fail");
 
         let xml = writer.into_inner().into_inner();
 
         let resp = self
             .client
             .request(
-                reqwest::Method::from_bytes(b"REPORT").unwrap(),
+                reqwest::Method::from_bytes(b"REPORT").expect("REPORT is a valid HTTP method"),
                 self.collection_url.clone(),
             )
             .header("Depth", "1")
@@ -364,7 +364,7 @@ fn parse_multiget_response(
         }
     }
 
-    content.ok_or_else(|| ParseMultigetError::MissingContent)
+    content.ok_or(ParseMultigetError::MissingContent)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -474,8 +474,7 @@ fn read_element_text(
             Event::Text(text) => {
                 let decoded = text.decode()?;
                 value.push_str(
-                    &quick_xml::escape::unescape(&decoded)
-                        .map_err(quick_xml::Error::from)?,
+                    &quick_xml::escape::unescape(&decoded).map_err(quick_xml::Error::from)?,
                 );
             }
             Event::CData(cdata) => value.push_str(&cdata.decode()?),
@@ -509,10 +508,7 @@ mod tests {
         let resources = parse_resource_refs(xml).expect("response should parse");
 
         assert_eq!(resources.len(), 1);
-        assert_eq!(
-            resources[0].href,
-            "/addressbooks/user/default/contact.vcf"
-        );
+        assert_eq!(resources[0].href, "/addressbooks/user/default/contact.vcf");
         assert_eq!(resources[0].etag.as_deref(), Some("\"123\""));
     }
 
@@ -534,10 +530,7 @@ mod tests {
         let resources = parse_resource_refs(xml).expect("response should parse");
 
         assert_eq!(resources.len(), 1);
-        assert_eq!(
-            resources[0].href,
-            "/calendars/user/birthdays/contact.ics"
-        );
+        assert_eq!(resources[0].href, "/calendars/user/birthdays/contact.ics");
         assert_eq!(resources[0].etag.as_deref(), Some("\"birthday-etag\""));
     }
 

@@ -1,3 +1,5 @@
+//! Adapter for managed CalDAV birthday calendars.
+
 use crate::contact::Contact;
 use chrono::{Days, Utc};
 use dav_client::caldav_client::CalDavClient;
@@ -9,13 +11,14 @@ use url::Url;
 use crate::ContactDestination;
 
 #[derive(Serialize, Deserialize)]
-pub struct CaldavAccessData {
+pub struct AccessData {
     pub url: String,
     pub username: String,
     pub password: String,
 }
 
-pub struct CaldavBirthdayDestination {
+/// An authenticated destination ready to export contacts.
+pub struct Destination {
     client: CalDavClient,
 }
 
@@ -24,7 +27,7 @@ const UID_DOMAIN: &str = "rahn-it.de";
 const SOFTWARE_MARKER: &str = "BDAY-V1";
 
 #[derive(Debug, thiserror::Error)]
-pub enum CaldavError {
+pub enum Error {
     #[error("inner error: {0}")]
     Inner(#[from] dav_client::caldav_client::CalDavError),
     #[error("invalid addressbook URI: {0:?}")]
@@ -35,8 +38,9 @@ pub enum CaldavError {
     BirthdayDateOverflow,
 }
 
-impl CaldavBirthdayDestination {
-    pub async fn new(access_data: CaldavAccessData) -> Result<Self, CaldavError> {
+impl Destination {
+    /// Connects using the supplied settings and checks remote access.
+    pub async fn new(access_data: AccessData) -> Result<Self, Error> {
         let calendar_url: Url = access_data.url.parse()?;
         let username = access_data.username;
         let password = access_data.password;
@@ -49,8 +53,8 @@ impl CaldavBirthdayDestination {
     }
 }
 
-impl ContactDestination for CaldavBirthdayDestination {
-    type Error = CaldavError;
+impl ContactDestination for Destination {
+    type Error = Error;
 
     async fn export_contacts(
         &self,
@@ -58,7 +62,7 @@ impl ContactDestination for CaldavBirthdayDestination {
     ) -> Result<(), Self::Error> {
         let mut contacts = contacts.peekable();
         if contacts.peek().is_none() {
-            return Err(CaldavError::EmptyContactList);
+            return Err(Error::EmptyContactList);
         }
 
         println!("Exporting birthdays to CalDAV");
@@ -121,11 +125,11 @@ struct CalendarEntry {
     data: String,
 }
 
-fn birthday_calendar_entry(contact: &Contact) -> Option<Result<CalendarEntry, CaldavError>> {
+fn birthday_calendar_entry(contact: &Contact) -> Option<Result<CalendarEntry, Error>> {
     let birthday = contact.birthday?;
     let end = match birthday.checked_add_days(Days::new(1)) {
         Some(end) => end,
-        None => return Some(Err(CaldavError::BirthdayDateOverflow)),
+        None => return Some(Err(Error::BirthdayDateOverflow)),
     };
     let id = birthday_id(contact, birthday);
     let uid = format!("{UID_PREFIX}{id}@{UID_DOMAIN}");

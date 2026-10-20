@@ -362,7 +362,11 @@ fn parse_address(property: &crate::vobject::VProperty) -> Address {
         }
     }
 
-    let raw = property.values.first().map(|s| s.as_str()).unwrap_or_default();
+    let raw = property
+        .values
+        .first()
+        .map(|s| s.as_str())
+        .unwrap_or_default();
     let parts = raw.split(';').collect::<Vec<_>>();
 
     address.post_box = parts

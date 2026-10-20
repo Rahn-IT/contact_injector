@@ -1,13 +1,13 @@
 use std::{fmt::Debug, hash::Hash};
 
-use crate::contact::{Contact, PhoneType};
+use crate::contact;
 use crate::destination::starface::{
-    Attribute, Block, PhoneSchema, PhoneSchemaType, RawStarfaceContact, SummarySchema,
-    SummarySchemaType, Tag, UploadContact,
+    Attribute, Block, PhoneSchema, PhoneSchemaType, RawContact, SummarySchema, SummarySchemaType,
+    Tag, UploadContact,
 };
 
 #[derive(Default, Eq)]
-pub struct StarfaceContact {
+pub struct Contact {
     pub id: String,
     first_name: String,
     family_name: String,
@@ -17,9 +17,9 @@ pub struct StarfaceContact {
     home_phone: String,
 }
 
-impl Debug for StarfaceContact {
+impl Debug for Contact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StarfaceContact")
+        f.debug_struct("Contact")
             .field("first_name", &self.first_name)
             .field("family_name", &self.family_name)
             .field("company", &self.company)
@@ -30,7 +30,7 @@ impl Debug for StarfaceContact {
     }
 }
 
-impl Hash for StarfaceContact {
+impl Hash for Contact {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.first_name.hash(state);
         self.family_name.hash(state);
@@ -41,7 +41,7 @@ impl Hash for StarfaceContact {
     }
 }
 
-impl PartialEq for StarfaceContact {
+impl PartialEq for Contact {
     fn eq(&self, other: &Self) -> bool {
         self.first_name == other.first_name
             && self.family_name == other.family_name
@@ -52,13 +52,13 @@ impl PartialEq for StarfaceContact {
     }
 }
 
-impl StarfaceContact {
+impl Contact {
     pub fn from_raw(
-        raw: RawStarfaceContact,
+        raw: RawContact,
         summary_schema: &SummarySchema,
         phone_schema: &PhoneSchema,
     ) -> Self {
-        let mut contact = StarfaceContact {
+        let mut contact = Contact {
             id: raw.id,
             ..Default::default()
         };
@@ -108,7 +108,7 @@ impl StarfaceContact {
         contact
     }
 
-    pub fn from_contact(contact: &Contact) -> Option<Self> {
+    pub fn from_contact(contact: &contact::Contact) -> Option<Self> {
         let first_name = sanitize_name(contact.name.given_name.as_ref());
         let family_name = sanitize_name(contact.name.family_name.as_ref());
         let company = sanitize_name(contact.org.as_ref());
@@ -121,21 +121,21 @@ impl StarfaceContact {
             contact
                 .phones
                 .iter()
-                .find(|phone| phone.phone_type == PhoneType::Work)
+                .find(|phone| phone.phone_type == contact::PhoneType::Work)
                 .map(|phone| &phone.number),
         );
         let home_phone = sanitize_number(
             contact
                 .phones
                 .iter()
-                .find(|phone| phone.phone_type == PhoneType::Home)
+                .find(|phone| phone.phone_type == contact::PhoneType::Home)
                 .map(|phone| &phone.number),
         );
         let mobile = sanitize_number(
             contact
                 .phones
                 .iter()
-                .find(|phone| phone.phone_type == PhoneType::Mobile)
+                .find(|phone| phone.phone_type == contact::PhoneType::Mobile)
                 .map(|phone| &phone.number),
         );
 
@@ -221,7 +221,7 @@ fn sanitize_number(number: Option<&String>) -> String {
 
     // replace 00 at start with + and keep existing +
     let mut iter = number.chars();
-    let first = iter.next().unwrap();
+    let first = iter.next().expect("empty numbers were returned above");
     match first {
         '+' => {
             sanitized = number;

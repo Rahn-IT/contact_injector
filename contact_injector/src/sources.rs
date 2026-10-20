@@ -4,14 +4,10 @@ use axum::{
     extract::{Path, State},
     response::{Html, Redirect},
 };
-use contact_protocols::{
-    ContactSource,
-    carddav::{CarddavAccessData, CarddavSource},
-    contact::Contact,
-};
+use contact_protocols::{ContactSource, carddav, contact::Contact};
 use serde::{Deserialize, Serialize};
 
-use crate::{AppError, AppState};
+use crate::{error, state};
 
 #[derive(Serialize, Debug)]
 pub struct Source {
@@ -22,40 +18,39 @@ pub struct Source {
 }
 
 #[derive(Serialize)]
-pub struct SourceList {
+pub struct List {
     sources: Vec<Source>,
 }
 
-pub async fn list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+pub async fn list(State(state): State<state::State>) -> Result<Html<String>, error::Error> {
     let sources = sqlx::query_as!(Source, "SELECT * FROM sources")
         .fetch_all(&state.db)
         .await?;
 
-    let template = state
-        .jinja
-        .get_template("sources.html")
-        .expect("template is loaded");
-    let rendered = template.render(SourceList { sources }).unwrap();
+    let template = state.jinja.get_template("sources.html")?;
+    let rendered = template.render(List { sources })?;
     Ok(Html(rendered))
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct CarddavSourceForm {
+pub struct FormData {
     name: String,
     url: String,
     username: String,
     password: String,
 }
 
-pub async fn new_carddav_get(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+pub async fn new_carddav_get(
+    State(state): State<state::State>,
+) -> Result<Html<String>, error::Error> {
     carddav_edit(state, None)
 }
 
 pub async fn new_carddav_post(
-    State(state): State<AppState>,
-    Form(form): Form<CarddavSourceForm>,
-) -> Result<Redirect, AppError> {
-    let access_data = CarddavAccessData {
+    State(state): State<state::State>,
+    Form(form): Form<FormData>,
+) -> Result<Redirect, error::Error> {
+    let access_data = carddav::AccessData {
         url: form.url,
         username: form.username,
         password: form.password,
@@ -70,23 +65,22 @@ pub async fn new_carddav_post(
         access_data_json
     )
     .execute(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     Ok(Redirect::to("/sources"))
 }
 
 pub async fn edit_carddav_get(
-    State(state): State<AppState>,
+    State(state): State<state::State>,
     Path(id): Path<i64>,
-) -> Result<Html<String>, AppError> {
+) -> Result<Html<String>, error::Error> {
     let source = sqlx::query_as!(Source, "SELECT * FROM sources WHERE id = ?", id)
         .fetch_one(&state.db)
         .await?;
 
-    let access_data: CarddavAccessData = serde_json::from_str(&source.access_data)?;
+    let access_data: carddav::AccessData = serde_json::from_str(&source.access_data)?;
 
-    let form_data = CarddavSourceForm {
+    let form_data = FormData {
         name: source.name,
         url: access_data.url,
         username: access_data.username,
@@ -97,11 +91,11 @@ pub async fn edit_carddav_get(
 }
 
 pub async fn edit_carddav_post(
-    State(state): State<AppState>,
+    State(state): State<state::State>,
     Path(id): Path<i64>,
-    Form(form): Form<CarddavSourceForm>,
-) -> Result<Redirect, AppError> {
-    let access_data = CarddavAccessData {
+    Form(form): Form<FormData>,
+) -> Result<Redirect, error::Error> {
+    let access_data = carddav::AccessData {
         url: form.url,
         username: form.username,
         password: form.password,
@@ -122,9 +116,9 @@ pub async fn edit_carddav_post(
 }
 
 pub async fn delete_source(
-    State(state): State<AppState>,
+    State(state): State<state::State>,
     Path(id): Path<i64>,
-) -> Result<Redirect, AppError> {
+) -> Result<Redirect, error::Error> {
     sqlx::query!("DELETE FROM sources WHERE id = ?", id)
         .execute(&state.db)
         .await?;
@@ -132,19 +126,13 @@ pub async fn delete_source(
     Ok(Redirect::to("/sources"))
 }
 
-fn carddav_edit(
-    state: AppState,
-    data: Option<CarddavSourceForm>,
-) -> Result<Html<String>, AppError> {
-    let template = state
-        .jinja
-        .get_template("carddav_source.html")
-        .expect("template is loaded");
-    let rendered = template.render(data).unwrap();
+fn carddav_edit(state: state::State, data: Option<FormData>) -> Result<Html<String>, error::Error> {
+    let template = state.jinja.get_template("carddav_source.html")?;
+    let rendered = template.render(data)?;
     Ok(Html(rendered))
 }
 
-pub async fn poll_source(state: &AppState, id: i64) -> Result<Vec<Contact>, AppError> {
+pub async fn poll_source(state: &state::State, id: i64) -> Result<Vec<Contact>, error::Error> {
     let source_data = sqlx::query!(
         "SELECT source_type, access_data FROM sources WHERE id = ?",
         id
@@ -154,8 +142,8 @@ pub async fn poll_source(state: &AppState, id: i64) -> Result<Vec<Contact>, AppE
 
     match source_data.source_type.as_str() {
         "carddav" => {
-            let access_data: CarddavAccessData = serde_json::from_str(&source_data.access_data)?;
-            let source = CarddavSource::new(access_data).await?;
+            let access_data: carddav::AccessData = serde_json::from_str(&source_data.access_data)?;
+            let source = carddav::Source::new(access_data).await?;
 
             source
                 .fetch_contacts()

@@ -1,35 +1,30 @@
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    path::Path,
-    sync::{Arc, Mutex},
-};
+//! HTTP entry point and application initialization.
+
+use std::sync::Arc;
 
 use axum::{
     Router,
     extract::State,
-    http::StatusCode,
-    response::{Html, IntoResponse, Response},
+    response::Html,
     routing::{get, post},
 };
 use http::{HeaderValue, header};
 
-use serde::Serialize;
 use sqlx::{Sqlite, SqlitePool, migrate::MigrateDatabase};
-use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
-use crate::sync_jobs::start_job;
+use crate::error::Error;
 
 mod destinations;
+mod error;
+mod job;
 mod sources;
+mod state;
 mod sync_jobs;
 
 const DB_PATH: &str = "./db/db.sqlite";
 
-fn router() -> Router<AppState> {
+fn router() -> Router<state::State> {
     Router::new()
-        // `GET /` goes to `root`
         .route("/", get(root))
         .route("/sources", get(sources::list))
         .route("/sources/new/carddav", get(sources::new_carddav_get))
@@ -96,102 +91,56 @@ fn router() -> Router<AppState> {
         )
 }
 
-#[derive(Debug, Clone)]
-struct AppState {
-    db: SqlitePool,
-    jinja: Arc<minijinja::Environment<'static>>,
-    job_map: Arc<Mutex<HashMap<i64, JobHandle>>>,
-}
-
-#[derive(Debug)]
-pub struct JobHandle {
-    cancel_token: CancellationToken,
-    run_now: mpsc::Sender<()>,
-    info: Arc<Mutex<JobInfo>>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct JobInfo {
-    last_run: String,
-    last_log: String,
-    currently_running: bool,
-}
-
-#[derive(Debug)]
-struct AppError(anyhow::Error);
-impl<E> From<E> for AppError
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(err: E) -> Self {
-        Self(err.into())
-    }
-}
-
-impl Display for AppError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong: {}", self.0),
-        )
-            .into_response()
-    }
-}
-
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     // initialize tracing
     tracing_subscriber::fmt::init();
 
-    if !tokio::fs::try_exists(DB_PATH).await.unwrap() {
-        tokio::fs::create_dir_all(Path::new(DB_PATH).parent().unwrap())
-            .await
-            .unwrap();
-        Sqlite::create_database(DB_PATH).await.unwrap();
+    if !tokio::fs::try_exists(DB_PATH).await? {
+        tokio::fs::create_dir_all(
+            std::path::Path::new(DB_PATH)
+                .parent()
+                .expect("database path has a parent"),
+        )
+        .await?;
+        Sqlite::create_database(DB_PATH).await?;
     }
 
-    let db = SqlitePool::connect(DB_PATH).await.unwrap();
-    sqlx::migrate!("./migrations").run(&db).await.unwrap();
+    let db = SqlitePool::connect(DB_PATH).await?;
+    sqlx::migrate!("./migrations").run(&db).await?;
 
     let mut jinja = minijinja::Environment::new();
     minijinja_embed::load_templates!(&mut jinja);
 
     let jobs = sqlx::query_scalar!("SELECT id FROM jobs")
         .fetch_all(&db)
-        .await
-        .unwrap();
+        .await?;
 
-    let state = AppState {
+    let state = state::State {
         db,
-        job_map: Arc::new(Mutex::new(HashMap::new())),
+        jobs: job::Manager::default(),
         jinja: Arc::new(jinja),
     };
 
     for id in jobs {
-        start_job(&state, id).await.unwrap();
+        state
+            .jobs
+            .start(&state, id)
+            .await
+            .map_err(Error::into_report)?;
     }
 
-    // build our application with a route
     let app = router().with_state(state);
 
-    // run our app with hyper, listening globally on port 3000
     let addr = "0.0.0.0:4040";
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    println!("Starting contact injector on: http://{}", addr);
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!(%addr, "starting contact injector");
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
-async fn root(State(state): State<AppState>) -> Html<String> {
-    let template = state
-        .jinja
-        .get_template("home.html")
-        .expect("template is loaded");
-    let rendered = template.render(()).unwrap();
-    Html(rendered)
+async fn root(State(state): State<state::State>) -> Result<Html<String>, Error> {
+    let template = state.jinja.get_template("home.html")?;
+    let rendered = template.render(())?;
+    Ok(Html(rendered))
 }
